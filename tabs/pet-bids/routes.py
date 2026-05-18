@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, unquote
 
@@ -481,6 +482,41 @@ def _petprep_run_log_path():
     return os.path.join(PROJECT_ROOT, "utils", "petprep_run.log")
 
 
+def _petprep_run_log_dir():
+    return os.path.join(PROJECT_ROOT, "utils", "petprep_runs")
+
+
+def _petprep_run_log_name(stamp=None):
+    stamp = stamp or datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    return f"petprep_run_{stamp}.log"
+
+
+def _petprep_run_log_path_for_stamp(stamp):
+    return os.path.join(_petprep_run_log_dir(), _petprep_run_log_name(stamp))
+
+
+def _find_latest_petprep_run_log():
+    log_dir = _petprep_run_log_dir()
+    if not os.path.isdir(log_dir):
+        return None
+
+    candidates = []
+    try:
+        for filename in os.listdir(log_dir):
+            if not filename.startswith("petprep_run_") or not filename.endswith(".log"):
+                continue
+            full_path = os.path.join(log_dir, filename)
+            if os.path.isfile(full_path):
+                candidates.append(full_path)
+    except OSError:
+        return None
+
+    if not candidates:
+        return None
+
+    return max(candidates, key=os.path.getmtime)
+
+
 def _petprep_run_pid_path():
     return os.path.join(PROJECT_ROOT, "utils", "petprep_run.pid")
 
@@ -553,9 +589,12 @@ def _handle_run_petprep_command(h, body):
         return
 
     script_path = os.path.join(PROJECT_ROOT, "utils", "petprep_run.sh")
-    log_path = _petprep_run_log_path()
     pid_path = _petprep_run_pid_path()
     os.makedirs(os.path.dirname(script_path), exist_ok=True)
+    os.makedirs(_petprep_run_log_dir(), exist_ok=True)
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    log_path = _petprep_run_log_path_for_stamp(stamp)
     try:
         with open(script_path, "w", encoding="utf-8", newline="") as f:
             f.write("#!/bin/bash\nset -e\n")
@@ -569,7 +608,14 @@ def _handle_run_petprep_command(h, body):
 
     try:
         with open(log_path, "w", encoding="utf-8") as lf:
-            p = subprocess.Popen(["bash", script_path], stdout=lf, stderr=lf, cwd=PROJECT_ROOT)
+            p = subprocess.Popen(
+                ["bash", script_path],
+                stdout=lf,
+                stderr=lf,
+                stdin=subprocess.DEVNULL,
+                cwd=PROJECT_ROOT,
+                start_new_session=True,
+            )
         with open(pid_path, "w", encoding="utf-8") as f:
             f.write(str(p.pid) + "\n")
     except Exception:
@@ -580,7 +626,7 @@ def _handle_run_petprep_command(h, body):
 
 
 def _handle_get_petprep_run_log(h, params):
-    log_path = _petprep_run_log_path()
+    log_path = _find_latest_petprep_run_log() or _petprep_run_log_path()
     pid_path = _petprep_run_pid_path()
     pid = None
     running = False
