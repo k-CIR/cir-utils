@@ -154,7 +154,7 @@ def _detect_project_root(script_dir):
     if m:
         return m.group(1)
     # Fallback for non-standard deployments where the repo lives directly
-    # inside the project folder (e.g. /some/path/<project>/bids-utils-mr).
+    # inside the project folder (e.g. /some/path/<project>/cir-utils).
     return os.path.realpath(os.path.join(script_dir, ".."))
 
 

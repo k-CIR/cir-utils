@@ -42,7 +42,7 @@ def _safe_label(value):
 def _runtime_home_dir(job_id, label):
     default_base = os.path.join(
         tempfile.gettempdir(),
-        "bids-utils-mr-pet2bids-home",
+        "cir-utils-pet2bids-home",
         _safe_label(os.environ.get("USER") or "user"),
     )
     base = os.environ.get(

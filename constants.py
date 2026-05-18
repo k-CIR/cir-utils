@@ -19,7 +19,7 @@ DEFAULT_DERIVATIVES_DIR = 'derivatives'
 
 # Common sub-paths used by tabs
 RAW_MRI_SUBDIR = 'raw/mri'
-RAW_PET_SUBDIR = 'raw/bmic'
+RAW_PET_SUBDIR = 'raw/pet'
 RAW_MEG_SUBDIR = 'raw/natmeg'
 RAW_MEG_LEGACY_SUBDIR = 'raw/meg'
 

@@ -45,7 +45,7 @@
     <span class="path-static" id="raw-path-static">/data/projects/…</span>
     <span class="path-static">/</span>
     <input id="raw-path" class="path-input" type="text"
-           spellcheck="false" placeholder="raw/bmic/..." />
+          spellcheck="false" placeholder="raw/pet/..." />
   </div>
 
   <label class="force-label">
@@ -110,7 +110,7 @@
   <div class="path-row">
     <span class="path-static" id="pet-bids-root-static">/data/projects/…</span>
     <span class="path-static">/</span>
-    <input id="pet-bids-dicom-path" class="path-input" type="text" spellcheck="false" value="raw/bmic" />
+    <input id="pet-bids-dicom-path" class="path-input" type="text" spellcheck="false" value="raw/pet" />
   </div>
 
   <label style="font-size:0.85rem; color:#9e9e9e; margin-bottom:0.3rem; display:block;">BIDS output directory</label>
@@ -121,9 +121,9 @@
   </div>
 
   <label style="font-size:0.85rem; color:#9e9e9e; margin-bottom:0.3rem; display:block;">Config file</label>
-  <div class="path-row" style="opacity:0.65; cursor:default;">
+    <div class="path-row" style="opacity:0.65; cursor:default;">
     <span class="path-static" id="pet-bids-cfg-root-static">/data/projects/…</span>
-    <span class="path-static">/bids-utils-mr/dcm2bids_config_pet.json</span>
+    <span class="path-static">/cir-utils/dcm2bids_config_pet.json</span>
   </div>
 
   <div style="display:flex; align-items:center; gap:1.5rem; margin-bottom:1rem; flex-wrap:wrap;">
@@ -172,134 +172,182 @@
 
 <!-- ── Run PETPrep ── -->
 <div id="pet-tab-petprep" class="tab-pane">
-  <p class="description">Under development.</p>
+  <p style="margin:0 0 0.4rem; color:#d4d4d4; font-weight:600; font-size:2rem;">PETPrep Configuration</p>
+  <p class="description">Configure PETPrep inputs, generate the container command, and reuse it later.</p>
+
+  <div style="padding: 1rem; background: #252526; border: 1px solid #3c3c3c; border-radius: 4px; margin-bottom: 1.5rem;">
+    <p style="margin: 0 0 0.8rem; color: #d4d4d4; font-size: 1rem; font-weight: 600;">Settings</p>
+
+    <label style="font-size:0.85rem; color:#9e9e9e; margin-bottom:0.3rem; display:block;">BIDS input directory</label>
+    <div class="path-row">
+      <span class="path-static" id="petprep-bids-root-static">/data/projects/…</span>
+      <span class="path-static">/</span>
+      <input id="petprep-bids-path" class="path-input" type="text" spellcheck="false" value="BIDS" />
+    </div>
+
+    <label style="font-size:0.85rem; color:#9e9e9e; margin-bottom:0.3rem; display:block; margin-top:0.8rem;">Output directory</label>
+    <div class="path-row">
+      <span class="path-static" id="petprep-out-root-static">/data/projects/…</span>
+      <span class="path-static">/</span>
+      <input id="petprep-out-path" class="path-input" type="text" spellcheck="false" value="BIDS/derivatives/petprep" />
+    </div>
+
+    <label style="font-size:0.85rem; color:#9e9e9e; margin-bottom:0.3rem; display:block; margin-top:0.8rem;">License file</label>
+    <div class="path-row">
+      <span class="path-static" id="petprep-license-root-static">/data/projects/…</span>
+      <span class="path-static">/</span>
+      <input id="petprep-license-path" class="path-input" type="text" spellcheck="false" value="license.txt" />
+    </div>
+
+    <label style="font-size:0.85rem; color:#9e9e9e; margin-bottom:0.3rem; display:block; margin-top:0.8rem;">Temp cache / templateflow directory</label>
+    <div class="path-row">
+      <span class="path-static" id="petprep-tempflow-root-static">/data/projects/…</span>
+      <span class="path-static">/</span>
+      <input id="petprep-tempflow-path" class="path-input" type="text" spellcheck="false" value="utils/temp_cach" />
+    </div>
+
+    <label style="font-size:0.85rem; color:#9e9e9e; margin-bottom:0.3rem; display:block; margin-top:0.8rem;">Singularity container</label>
+    <select id="petprep-container-select" class="path-input" style="width:100%; margin-bottom:0.8rem;">
+      <option value="">Loading PETPrep containers...</option>
+    </select>
+
+    <label style="display:flex; align-items:center; gap:0.45rem; color:#c8c8c8; font-size:0.85rem; margin-bottom:0.6rem;">
+      <input type="checkbox" id="petprep-skip-validation" />
+      Add --skip_bids_validation
+    </label>
+
+    <label style="font-size:0.85rem; color:#9e9e9e; margin-bottom:0.3rem; display:block;">Participant (optional)</label>
+    <input id="petprep-participant" class="path-input" type="text" spellcheck="false" placeholder="001" style="width:100%; margin-bottom:0.8rem;" />
+
+    <div style="margin-top:1rem;">
+      <button class="btn" id="petprep-generate-btn" onclick="petBids.generatePetprepCommand()">Generate PETPrep Command</button>
+      <span id="petprep-gen-status" style="font-size: 0.87rem; color: #9e9e9e; margin-left: 1rem;"></span>
+    </div>
+  </div>
+
+  <div style="padding: 1rem; background: #252526; border: 1px solid #3c3c3c; border-radius: 4px;">
+    <p style="margin: 0 0 0.8rem; color: #d4d4d4; font-size: 1rem; font-weight: 600;">Generated Command</p>
+    <div id="petprep-command-display" style="background: #1e1e1e; border: 1px solid #3c3c3c; border-radius: 4px; padding: 0.8rem; margin-bottom: 0.8rem; min-height: 6rem; max-height: 18rem; overflow-y: auto; font-family: monospace; font-size: 0.85rem; color: #d4d4d4; white-space: pre-wrap; word-break: break-all;">(No command generated yet)</div>
+    <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+      <button class="btn" id="petprep-run-btn" onclick="petBids.runPetprepInTerminal()" disabled>Run in Terminal</button>
+      <button class="btn btn-secondary" id="petprep-copy-btn" onclick="petBids.copyPetprepCommand()" disabled>Copy Command</button>
+      <button class="btn btn-secondary" id="petprep-save-btn" onclick="petBids.savePetprepCommand()" disabled>Save Command</button>
+      <button class="btn btn-secondary" id="petprep-load-btn" onclick="petBids.loadPetprepCommand()">Load Saved Command</button>
+      <span id="petprep-run-status" style="font-size: 0.87rem; color: #9e9e9e; margin-left: auto;"></span>
+    </div>
+  </div>
+
+  <div style="margin-top: 1rem; padding: 1rem; background: #252526; border: 1px solid #3c3c3c; border-radius: 4px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; margin-bottom:0.75rem;">
+      <p style="margin: 0; color: #d4d4d4; font-size: 1rem; font-weight: 600;">Run Output</p>
+      <span id="petprep-run-output-meta" style="font-size:0.84rem; color:#9e9e9e;">Idle</span>
+    </div>
+    <div id="petprep-run-output" style="background:#0d0d0d; border:1px solid #3c3c3c; border-radius:4px; padding:0.9rem 1rem; min-height:8rem; max-height:22rem; overflow-y:auto; font-family:monospace; font-size:0.85rem; line-height:1.5; color:#c8c8c8; white-space:pre-wrap; word-break:break-word;">No PETPrep command has been run yet.</div>
+  </div>
 </div>
 
 <!-- ── PET QC Overview ── -->
 <div id="pet-tab-qc" class="tab-pane">
   <p class="description">
-    Browse a CSV under derivatives that tracks data collection, BIDSification,
-    and quality-control completion per subject/session.
+    Inspect a transfer log from <code>utils/</code>, create a QC log from the filtered rows,
+    and track QC progress in a matching <code>_petqc_log.csv</code> file.
   </p>
 
-  <div id="csv-warn" class="warn" style="display:none;"></div>
+  <div id="petqc-warn" class="warn" style="display:none;"></div>
 
-  <div class="path-row">
-    <span class="path-static" id="csv-path-static">/data/projects/…</span>
-    <span class="path-static">/</span>
-    <input id="csv-path" class="path-input" type="text"
-          spellcheck="false" placeholder="BIDS/derivatives/your_file.csv" />
-  </div>
-
-  <div class="controls-row">
-    <button class="btn" id="csv-load-btn" onclick="petBids.loadCsvFile()">Load CSV</button>
-    <button class="btn" id="init-target-btn" onclick="petBids.initializeTargetFromSource()">Initialize target from source</button>
-  </div>
-
-  <div class="controls-row" style="gap: 0.5rem;">
-    <input id="csv-columns" class="path-input" type="text" style="flex: 1; min-width: 400px; box-sizing: border-box;"
-           spellcheck="false" placeholder="Columns (comma-separated, optional)" value="sub_id, session_number, bmic_radioligande_factor" />
-    <label style="display:flex; align-items:center; gap:0.35rem; color:#c8c8c8; font-size:0.85rem; white-space: nowrap;">
-      <input type="checkbox" id="read-only-toggle" checked onchange="petBids.refreshEditability()" />
-      Read-only
-    </label>
-  </div>
-
-  <ul id="csv-file-list" class="list"></ul>
-
-  <div id="target-file-section" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #3c3c3c;">
-    <p class="description" style="margin-bottom: 0.6rem;">
-      <strong>Target file tracking</strong> — Define where to save progress and which columns track status.
+  <!-- ── Transfer Log Inspection ── -->
+  <div style="margin-bottom: 1.5rem; padding: 1rem; background: #252526; border: 1px solid #3c3c3c; border-radius: 4px;">
+    <p style="margin: 0 0 0.8rem; color: #d4d4d4; font-size: 1rem; font-weight: 600;">Transfer Log Inspection</p>
+    <p class="description" style="margin-bottom: 0.8rem;">
+      Select a transfer log, inspect the filtered rows, and create a QC log when you are ready.
     </p>
-    <div class="path-row">
-      <span class="path-static" id="target-path-static">/data/projects/…</span>
-      <span class="path-static">/</span>
-      <input id="target-file-path" class="path-input" type="text"
-              spellcheck="false" placeholder="BIDS/derivatives/progress.csv" />
+    <div style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap; margin-bottom:0.75rem;">
+      <label for="petqc-transfer-log-select" style="font-size:0.85rem; color:#9e9e9e;">Transfer log</label>
+      <select id="petqc-transfer-log-select" style="min-width:320px; background:#1e1e1e; border:1px solid #444; color:#d4d4d4; font-family:monospace; font-size:0.87rem; padding:0.3rem 0.45rem; border-radius:2px; outline:none;">
+        <option value="">Loading transfer logs...</option>
+      </select>
+      <span id="petqc-transfer-log-preview" style="font-size:0.85rem; color:#9e9e9e;"></span>
     </div>
     <div class="controls-row">
-      <button class="btn" id="load-target-btn" onclick="petBids.loadTargetFile()">Load target</button>
-      <button class="btn" id="save-target-btn" onclick="petBids.saveTargetFile()">Create/Save target</button>
-      <button class="btn" id="reset-target-btn" style="background:#8b2d2d;" onclick="petBids.showResetDialog()">Restart progress CSV</button>
-      <button class="btn" id="merge-completed-btn" onclick="petBids.showMergeDialog()">Add rows from completed sessions</button>
+      <button class="btn" id="petqc-init-btn" onclick="petBids.inspectPetQcTransferLog()" disabled>Inspect transfer log</button>
+      <button class="btn" id="petqc-create-btn" onclick="petBids.createPetQcFromTransferLog()" disabled>Create QC log from transfer log</button>
+      <span id="petqc-create-success" style="font-size:1.1rem; color:#4ec9b0; margin-left:0.6rem; display:inline-block; width:1.2rem;"></span>
+      <span id="petqc-init-status" style="font-size: 0.87rem; color: #9e9e9e; margin-left: 0.6rem;"></span>
     </div>
-    <label for="status-column-names" style="display:block; color:#9e9e9e; font-size:0.82rem; margin:0.4rem 0 0.3rem;">
-      Status columns (comma-separated)
+    <div id="petqc-transfer-meta" class="csv-meta"></div>
+    <div id="petqc-transfer-table-wrap" class="csv-table-wrap" style="display:none; margin-top:1rem;">
+      <table class="csv-table" id="petqc-transfer-table"></table>
+    </div>
+  </div>
+
+  <!-- ── QC Tracking Section ── -->
+  <div style="padding: 1rem; background: #252526; border: 1px solid #3c3c3c; border-radius: 4px;">
+    <p style="margin: 0 0 0.8rem; color: #d4d4d4; font-size: 1rem; font-weight: 600;">QC Progress</p>
+    
+    <div class="controls-row">
+      <button class="btn" id="petqc-load-btn" onclick="petBids.loadPetQcFile()">Load QC Tracking</button>
+      <button class="btn" id="petqc-save-btn" onclick="petBids.savePetQcFile()">Save</button>
+      <button class="btn" id="petqc-restart-btn" style="background: #8b2d2d;" onclick="petBids.showPetQcRestartDialog()">Restart</button>
+      <button class="btn" id="petqc-merge-btn" onclick="petBids.showPetQcMergeDialog()">Merge New Rows</button>
+    </div>
+
+    <span id="petqc-qc-status" style="display:block; font-size: 0.87rem; color: #9e9e9e; margin-top: 0.75rem;"></span>
+    <div id="petqc-meta" class="csv-meta"></div>
+    <div id="petqc-table-wrap" class="csv-table-wrap" style="display: none; margin-top: 1rem;">
+      <table class="csv-table" id="petqc-table"></table>
+    </div>
+  </div>
+
+  <!-- ── Create QC Confirmation ── -->
+  <div id="petqc-create-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;"></div>
+  <div id="petqc-create-dialog" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#252526; border:1px solid #3c3c3c; border-radius:4px; padding:1.5rem; z-index:1000; min-width:420px; max-width:600px; box-shadow:0 0 20px rgba(0,0,0,0.8);">
+    <h3 style="margin:0 0 1rem; color:#d4d4d4; font-size:1rem;">Create QC log from transfer log</h3>
+    <p style="color:#f2c6c6; font-size:0.88rem; margin-bottom:0.7rem;">
+      This will overwrite the existing QC log if one already exists.
+    </p>
+    <p style="color:#9e9e9e; font-size:0.85rem; margin-bottom:0.9rem;">
+      Target file: <span id="petqc-create-preview" style="color:#d4d4d4;"></span>
+    </p>
+    <label style="display:flex; align-items:flex-start; gap:0.45rem; color:#c8c8c8; font-size:0.85rem; margin-bottom:1rem;">
+      <input type="checkbox" id="petqc-create-confirm-checkbox" onchange="petBids.refreshPetQcCreateConfirm()" />
+      I understand this will overwrite the QC log.
     </label>
-    <textarea id="status-column-names" class="path-input"
-              spellcheck="false"
-              style="width:100%; min-height:3rem; resize:vertical; white-space:pre-wrap;"
-              placeholder="BIDS, PETPrep ran, QC motion correction, QC coregistration, QC MRI delineation, QC Freesurfer"></textarea>
-    <ul id="target-file-list" class="list"></ul>
+    <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
+      <button class="btn" style="background:#555;" onclick="petBids.closePetQcCreateDialog()">Cancel</button>
+      <button class="btn" id="petqc-create-confirm-btn" style="background:#8b2d2d;" onclick="petBids.executePetQcCreateFromTransferLog(true)" disabled>Yes, overwrite and create</button>
+    </div>
   </div>
 
-  <div id="csv-meta" class="csv-meta"></div>
-  <div id="csv-table-wrap" class="csv-table-wrap" style="display:none;">
-    <table class="csv-table" id="csv-table"></table>
+  <!-- ── Restart Dialog ── -->
+  <div id="petqc-restart-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;"></div>
+  <div id="petqc-restart-dialog" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#252526; border:1px solid #3c3c3c; border-radius:4px; padding:1.5rem; z-index:1000; min-width:400px; max-width:550px; box-shadow:0 0 20px rgba(0,0,0,0.8);">
+    <h3 style="margin:0 0 1rem; color:#d4d4d4; font-size:1rem;">Restart PET QC Tracking</h3>
+    <p style="color:#f2c6c6; font-size:0.88rem; margin-bottom:0.7rem;">
+      This will clear all QC progress and reinitialize from the selected transfer log.
+    </p>
+    <p style="color:#9e9e9e; font-size:0.85rem; margin-bottom:0.9rem;">
+      Target file: <span id="petqc-restart-preview" style="color:#d4d4d4;"></span>
+    </p>
+    <label style="display:flex; align-items:flex-start; gap:0.45rem; color:#c8c8c8; font-size:0.85rem; margin-bottom:1rem;">
+      <input type="checkbox" id="petqc-restart-confirm-checkbox" onchange="petBids.refreshPetQcRestartConfirm()" />
+      I understand this will remove all QC progress.
+    </label>
+    <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
+      <button class="btn" style="background:#555;" onclick="petBids.closePetQcRestartDialog()">Cancel</button>
+      <button class="btn" id="petqc-restart-confirm-btn" style="background:#8b2d2d;" onclick="petBids.executePetQcRestart()" disabled>Yes, restart</button>
+    </div>
   </div>
 
-  <!-- Merge dialog overlay -->
-  <div id="merge-dialog-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;"></div>
-  <div id="merge-dialog" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#252526; border:1px solid #3c3c3c; border-radius:4px; padding:1.5rem; z-index:1000; min-width:400px; max-width:600px; box-shadow:0 0 20px rgba(0,0,0,0.8);">
-    <h3 style="margin:0 0 1rem; color:#d4d4d4; font-size:1rem;">Add rows from completed sessions</h3>
+  <!-- ── Merge Dialog ── -->
+  <div id="petqc-merge-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;"></div>
+  <div id="petqc-merge-dialog" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#252526; border:1px solid #3c3c3c; border-radius:4px; padding:1.5rem; z-index:1000; min-width:400px; max-width:550px; box-shadow:0 0 20px rgba(0,0,0,0.8);">
+    <h3 style="margin:0 0 1rem; color:#d4d4d4; font-size:1rem;">Merge New Rows</h3>
     <p style="color:#9e9e9e; font-size:0.88rem; margin-bottom:1rem;">
-      Select a completed sessions CSV file to append its rows to the current target.
+      Load the selected transfer log and add new BMIC rows to your tracking file.
     </p>
-    <label for="merge-file-select" style="display:block; color:#9e9e9e; font-size:0.82rem; margin:0 0 0.4rem;">
-      Available files:
-    </label>
-    <select id="merge-file-select" class="status-select" style="width:100%; margin-bottom:0.8rem;" onchange="petBids.mergeFileSelected()">
-      <option value="">-- Select a file --</option>
-    </select>
-    <label for="merge-file-path" style="display:block; color:#9e9e9e; font-size:0.82rem; margin:0 0 0.3rem;">
-      Or enter path manually:
-    </label>
-    <div class="path-row" style="margin-bottom:0.8rem;">
-      <span class="path-static">File:</span>
-      <input id="merge-file-path" class="path-input" type="text" spellcheck="false" placeholder="BIDS/derivatives/completed.csv" />
-    </div>
     <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
-      <button class="btn" style="background:#555;" onclick="petBids.closeMergeDialog()">Cancel</button>
-      <button class="btn" onclick="petBids.executeMerge()">Merge</button>
-    </div>
-  </div>
-
-  <!-- Reset target dialog overlay -->
-  <div id="reset-dialog-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;"></div>
-  <div id="reset-dialog" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#252526; border:1px solid #3c3c3c; border-radius:4px; padding:1.5rem; z-index:1000; min-width:420px; max-width:640px; box-shadow:0 0 20px rgba(0,0,0,0.8);">
-    <h3 style="margin:0 0 1rem; color:#d4d4d4; font-size:1rem;">Restart progress CSV</h3>
-    <p style="color:#f2c6c6; font-size:0.88rem; margin-bottom:0.7rem;">
-      This will delete and recreate the target progress CSV using the current source CSV as baseline.
-    </p>
-    <p style="color:#9e9e9e; font-size:0.85rem; margin-bottom:0.9rem;">
-      Target: <span id="reset-target-preview" style="color:#d4d4d4;"></span>
-    </p>
-    <label style="display:flex; align-items:flex-start; gap:0.45rem; color:#c8c8c8; font-size:0.85rem; margin-bottom:1rem;">
-      <input type="checkbox" id="reset-confirm-checkbox" onchange="petBids.refreshResetConfirmState()" />
-      I understand this will remove the existing progress CSV content.
-    </label>
-    <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
-      <button class="btn" style="background:#555;" onclick="petBids.closeResetDialog()">Cancel</button>
-      <button class="btn" id="reset-confirm-btn" style="background:#8b2d2d;" onclick="petBids.executeResetTargetFile()" disabled>Yes, restart</button>
-    </div>
-  </div>
-
-  <div id="init-target-dialog-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:999;"></div>
-  <div id="init-target-dialog" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#252526; border:1px solid #3c3c3c; border-radius:4px; padding:1.5rem; z-index:1000; min-width:420px; max-width:640px; box-shadow:0 0 20px rgba(0,0,0,0.8);">
-    <h3 style="margin:0 0 1rem; color:#d4d4d4; font-size:1rem;">Overwrite existing target file?</h3>
-    <p style="color:#f2c6c6; font-size:0.88rem; margin-bottom:0.7rem;">
-      The target file already exists. Initialize from source will overwrite it with data from the current source CSV.
-    </p>
-    <p style="color:#9e9e9e; font-size:0.85rem; margin-bottom:0.9rem;">
-      Target: <span id="init-target-preview" style="color:#d4d4d4;"></span>
-    </p>
-    <label style="display:flex; align-items:flex-start; gap:0.45rem; color:#c8c8c8; font-size:0.85rem; margin-bottom:1rem;">
-      <input type="checkbox" id="init-target-confirm-checkbox" onchange="petBids.refreshInitTargetConfirmState()" />
-      I want to overwrite the existing target file.
-    </label>
-    <div style="display:flex; gap:0.6rem; justify-content:flex-end;">
-      <button class="btn" style="background:#555;" onclick="petBids.closeInitTargetDialog()">Cancel</button>
-      <button class="btn" id="init-target-confirm-btn" style="background:#8b2d2d;" onclick="petBids.executeInitializeTargetFromSource()" disabled>Yes, overwrite</button>
+      <button class="btn" style="background:#555;" onclick="petBids.closePetQcMergeDialog()">Cancel</button>
+      <button class="btn" onclick="petBids.executePetQcMerge()">Merge from Selected Transfer Log</button>
     </div>
   </div>
 </div>
@@ -314,6 +362,12 @@
     min-height: 22rem;
     max-height: 75vh;
     background: #121212;
+  }
+
+  /* Make the Transfer Log inspection pane shorter so QC pane is visible */
+  #petqc-transfer-table-wrap.csv-table-wrap {
+    min-height: 10rem;
+    max-height: 40vh;
   }
 
   .csv-table {
@@ -413,6 +467,9 @@
   const petBids = (() => {
     let _token = null;
     let _projectRoot = '';
+    let _petprepCurrentCommand = '';
+    let _petprepContainerFiles = [];
+    let _petprepRunPollTimer = null;
 
     function _collapsePathSegments(path) {
       const isAbs = path.startsWith('/');
@@ -459,9 +516,17 @@
       const raw = String(value || '').trim().replace(/\\/g, '/');
       if (!raw) return '';
       const collapsed = _collapsePathSegments(raw);
-      return raw.startsWith('/') && !collapsed.startsWith('/')
+      let result = raw.startsWith('/') && !collapsed.startsWith('/')
         ? '/' + collapsed
         : collapsed;
+      
+      // Security check: ensure result doesn't contain ".." (path traversal)
+      if (result.includes('/../') || result.endsWith('/..') || result === '..') {
+        console.warn('Path normalization produced unsafe result:', result, 'from:', raw);
+        return ''; // Return empty if path normalization fails
+      }
+      
+      return result;
     }
 
     function _addToken(url) {
@@ -901,7 +966,7 @@
         overviewInput.value = 'BIDS/derivatives/petprep';
       }
       if (rawInput && !rawInput.value.trim()) {
-        rawInput.value = 'raw/bmic';
+        rawInput.value = 'raw/pet';
       }
       try {
         const defaultSelected = ['sub_id', 'session_number', 'bmic_radioligande_factor'];
@@ -914,8 +979,15 @@
           'QC Freesurfer',
         ];
 
-        document.getElementById('csv-columns').value = defaultSelected.join(', ');
-        document.getElementById('status-column-names').value = defaultTracking.join(', ');
+        // Safely set values for elements that exist
+        const csvColumnsEl = document.getElementById('csv-columns');
+        if (csvColumnsEl) {
+          csvColumnsEl.value = defaultSelected.join(', ');
+        }
+        const statusColumnNamesEl = document.getElementById('status-column-names');
+        if (statusColumnNamesEl) {
+          statusColumnNamesEl.value = defaultTracking.join(', ');
+        }
 
         const petCfgResp = await fetch(_addToken('/pet-get-config'));
         if (petCfgResp.status === 401 && window._handleAuthError) {
@@ -927,29 +999,79 @@
         }
         const petCfg = await petCfgResp.json();
         _projectRoot = _normalizeRootPath(petCfg.project_root || '');
-        document.getElementById('pet-path-static').textContent = _projectRoot;
-        document.getElementById('raw-path-static').textContent = _projectRoot;
-        document.getElementById('pet-bids-root-static').textContent = _projectRoot;
-        document.getElementById('pet-bids-out-static').textContent = _projectRoot;
-        document.getElementById('pet-bids-cfg-root-static').textContent = _projectRoot;
+        
+        // Validate that project root was loaded correctly
+        console.log('PET tab: project_root from server:', petCfg.project_root);
+        console.log('PET tab: _projectRoot after normalization:', _projectRoot);
+        
+        if (!_projectRoot || _projectRoot.includes('..')) {
+          throw new Error('Project root not properly detected: ' + _projectRoot);
+        }
+        
+        // Set path static text for all elements that exist
+        const pathElements = [
+          'pet-path-static',
+          'raw-path-static',
+          'pet-bids-root-static',
+          'pet-bids-out-static',
+          'pet-bids-cfg-root-static',
+          'petprep-bids-root-static',
+          'petprep-out-root-static',
+          'petprep-license-root-static',
+          'petprep-tempflow-root-static',
+        ];
+        for (const id of pathElements) {
+          const el = document.getElementById(id);
+          if (el) {
+            el.textContent = _projectRoot;
+          }
+        }
+        
         if (petCfg.warning) {
           const w = document.getElementById('pet-raw-path-warn');
-          w.textContent = '⚠ ' + petCfg.warning;
-          w.style.display = '';
+          if (w) {
+            w.textContent = '⚠ ' + petCfg.warning;
+            w.style.display = '';
+          }
         }
         if (petCfg.default_path) {
           const rawDisplayPath = _normalizeDisplayPath(petCfg.default_path);
-          document.getElementById('raw-path').value = rawDisplayPath;
+          const rawPathEl = document.getElementById('raw-path');
+          if (rawPathEl) {
+            rawPathEl.value = rawDisplayPath;
+          }
         }
         if (petCfg.html_default_path) {
           const htmlDisplayPath = _normalizeDisplayPath(petCfg.html_default_path);
-          document.getElementById('overview-path').value = htmlDisplayPath;
+          const overviewPathEl = document.getElementById('overview-path');
+          if (overviewPathEl) {
+            overviewPathEl.value = htmlDisplayPath;
+          }
         }
         if (petCfg.html_warning) {
           const w = document.getElementById('pet-path-warn');
-          w.textContent = '⚠ ' + petCfg.html_warning;
-          w.style.display = '';
+          if (w) {
+            w.textContent = '⚠ ' + petCfg.html_warning;
+            w.style.display = '';
+          }
         }
+
+        const petprepDefaults = {
+          bids: 'BIDS',
+          out: 'BIDS/derivatives/petprep',
+          license: 'license.txt',
+          tempflow: 'utils/temp_cach',
+        };
+        const bidsPathEl = document.getElementById('petprep-bids-path');
+        if (bidsPathEl) bidsPathEl.value = petprepDefaults.bids;
+        const outPathEl = document.getElementById('petprep-out-path');
+        if (outPathEl) outPathEl.value = petprepDefaults.out;
+        const licensePathEl = document.getElementById('petprep-license-path');
+        if (licensePathEl) licensePathEl.value = petprepDefaults.license;
+        const tempflowPathEl = document.getElementById('petprep-tempflow-path');
+        if (tempflowPathEl) tempflowPathEl.value = petprepDefaults.tempflow;
+
+        _loadPetprepContainerFiles();
 
         const csvResp = await fetch(_addToken('/get-csv-config'));
         if (csvResp.status === 401 && window._handleAuthError) {
@@ -961,18 +1083,39 @@
         }
         const csvCfg = await csvResp.json();
         const csvRoot = _normalizeRootPath(csvCfg.project_root || '');
-        document.getElementById('csv-path-static').textContent = csvRoot;
-        document.getElementById('target-path-static').textContent = csvRoot;
+        
+        // Set CSV path static elements if they exist
+        const csvPathStaticEl = document.getElementById('csv-path-static');
+        if (csvPathStaticEl) {
+          csvPathStaticEl.textContent = csvRoot;
+        }
+        const targetPathStaticEl = document.getElementById('target-path-static');
+        if (targetPathStaticEl) {
+          targetPathStaticEl.textContent = csvRoot;
+        }
+        
         if (csvCfg.warning) {
           const w = document.getElementById('csv-warn');
-          w.textContent = '⚠ ' + csvCfg.warning;
-          w.style.display = '';
+          if (w) {
+            w.textContent = '⚠ ' + csvCfg.warning;
+            w.style.display = '';
+          }
         }
         if (csvCfg.default_csv) {
-          document.getElementById('csv-path').value = csvCfg.default_csv;
-          document.getElementById('target-file-path').value = csvCfg.default_csv.replace(/[^/]*$/, 'progress.csv');
+          const csvPathEl = document.getElementById('csv-path');
+          if (csvPathEl) {
+            csvPathEl.value = csvCfg.default_csv;
+          }
+          const targetFilePathEl = document.getElementById('target-file-path');
+          if (targetFilePathEl) {
+            targetFilePathEl.value = csvCfg.default_csv.replace(/[^/]*$/, 'progress.csv');
+          }
         }
-        renderCsvFileList(csvCfg.csv_files || []);
+        
+        // Only call renderCsvFileList if it exists
+        if (typeof renderCsvFileList === 'function') {
+          renderCsvFileList(csvCfg.csv_files || []);
+        }
       } catch (err) {
         const msg = (err && err.message) ? err.message : 'Failed to load PET tab defaults.';
         const warnEls = [
@@ -1296,6 +1439,11 @@
       const statusEl = document.getElementById('pet-generate-status');
       try {
         const resp = await fetch(_addToken('/pet-get-bids-config'));
+        if (resp.status === 401 && window._handleAuthError) { window._handleAuthError(); return; }
+        if (!resp.ok) {
+          statusEl.innerHTML = '<span class="t-err">No config file found.</span>';
+          return;
+        }
         const data = await resp.json();
         if (!data.config) {
           statusEl.innerHTML = '<span class="t-err">No config file found.</span>';
@@ -1347,6 +1495,11 @@
       const status = document.getElementById('pet-editor-status');
       try {
         const resp = await fetch(_addToken('/pet-get-bids-config'));
+        if (resp.status === 401 && window._handleAuthError) { window._handleAuthError(); return; }
+        if (!resp.ok) {
+          status.innerHTML = '<span class="t-err">Failed to load config.</span>';
+          return;
+        }
         const data = await resp.json();
         ta.value = data.config ? JSON.stringify(data.config, null, 4) : '';
         status.textContent = '';
@@ -1383,6 +1536,10 @@
 
     function renderCsvFileList(paths) {
       const list = document.getElementById('csv-file-list');
+      if (!list) {
+        // csv-file-list element doesn't exist (e.g., in simplified QC tab)
+        return;
+      }
       list.innerHTML = '';
       if (!paths.length) {
         list.innerHTML = '<li style="color:#9e9e9e;">No CSV files found.</li>';
@@ -1393,7 +1550,12 @@
         li.style.cursor = 'pointer';
         li.style.color = '#4ec9b0';
         li.textContent = path;
-        li.onclick = () => { document.getElementById('csv-path').value = path; };
+        li.onclick = () => { 
+          const csvPathEl = document.getElementById('csv-path');
+          if (csvPathEl) {
+            csvPathEl.value = path;
+          }
+        };
         list.appendChild(li);
       }
     }
@@ -1689,7 +1851,7 @@
     async function runDcm2bids() {
       const dicomRel = document.getElementById('pet-bids-dicom-path').value.trim();
       const outputRel = document.getElementById('pet-bids-output-path').value.trim();
-      const configRel = 'bids-utils-mr/dcm2bids_config_pet.json';
+      const configRel = 'cir-utils/dcm2bids_config_pet.json';
       const workers = parseInt(document.getElementById('pet-bids-workers').value, 10) || 8;
       const clobber = document.getElementById('pet-bids-clobber').checked;
       const btn = document.getElementById('pet-run-bids-btn');
@@ -2172,7 +2334,898 @@
       }
     }
 
+    // ════════════════════════════════════════════════════════════════════════════════
+    // PET QC Tab Functions - Simplified workflow
+    // ════════════════════════════════════════════════════════════════════════════════
+
+    let _petQcTransferLogData = null;
+    let _petQcCurrentData = null;
+    let _petQcTransferLogFiles = [];
+    const _petQcRequiredColumns = ['cir_id', 'sub_id', 'session_number', 'cir_facility', 'scan_date', 'pet_bids', 'pet_prep'];
+    const _petQcQcColumns = [
+      { key: 'QC_MC', label: 'motion correction' },
+      { key: 'QC_coreg', label: 'motion correction' },
+      { key: 'QC_mri', label: 'mri delineation' },
+      { key: 'QC_FS', label: 'freesurfer' },
+    ];
+
+    function _setPetQcStatus(msg, type = 'ok') {
+      const el = document.getElementById('petqc-init-status');
+      if (el) {
+        el.textContent = msg;
+        el.style.color = type === 'err' ? '#f48771' : (type === 'warn' ? '#ffd700' : '#4ec9b0');
+      }
+    }
+
+    function _setPetQcQcStatus(msg, type = 'ok') {
+      const el = document.getElementById('petqc-qc-status');
+      if (el) {
+        el.textContent = msg;
+        el.style.color = type === 'err' ? '#f48771' : (type === 'warn' ? '#ffd700' : '#4ec9b0');
+      }
+    }
+
+    function _getSelectedPetQcPaths() {
+      const select = document.getElementById('petqc-transfer-log-select');
+      const transferLog = select ? String(select.value || '').trim() : '';
+      if (!transferLog) {
+        throw new Error('Please select a transfer log before initializing PET QC.');
+      }
+      if (!transferLog.startsWith('utils/') || !transferLog.toLowerCase().endsWith('transfer_log.csv')) {
+        throw new Error('Invalid transfer log selection.');
+      }
+
+      return {
+        transferLog,
+        qcLog: transferLog.replace(/transfer_log\.csv$/i, 'petqc_log.csv'),
+      };
+    }
+
+    function _getPetQcTransferLogColumns(headers) {
+      const normalizedHeaders = (headers || []).map(h => String(h || '').trim().toLowerCase());
+      const columnMap = {};
+
+      // Allow some common header aliases when matching required columns.
+      const aliases = {
+        cir_id: ['cir_id', 'cir_project', 'project', 'project_id'],
+        sub_id: ['sub_id', 'subject_id', 'subject'],
+        session_number: ['session_number', 'session'],
+        cir_facility: ['cir_facility', 'facility', 'site'],
+        scan_date: ['scan_date', 'date', 'scan_date_utc'],
+        pet_bids: ['pet_bids'],
+        pet_prep: ['pet_prep'],
+      };
+
+      for (const columnName of _petQcRequiredColumns) {
+        const tried = aliases[columnName] || [columnName];
+        let found = -1;
+        for (const alt of tried) {
+          const idx = normalizedHeaders.indexOf(alt);
+          if (idx >= 0) {
+            found = idx;
+            break;
+          }
+        }
+        if (found < 0) {
+          return null;
+        }
+        columnMap[columnName] = found;
+      }
+
+      return columnMap;
+    }
+
+    function _getPetQcDisplayHeaders(headers) {
+      return (headers || []).map(header => {
+        const name = String(header || '').trim();
+        const match = _petQcQcColumns.find(column => column.key.toLowerCase() === name.toLowerCase());
+        return match ? match.label : name;
+      });
+    }
+
+    function _getPetQcFilteredRows(rows, columnMap) {
+      return (rows || []).filter(row => {
+        const facility = String(row[columnMap.cir_facility] || '').trim();
+        return facility === '3';
+      });
+    }
+
+    function _buildPetQcTransferTableData(headers, rows, columnMap) {
+      const filteredRows = _getPetQcFilteredRows(rows, columnMap);
+      const displayHeaders = _petQcRequiredColumns.map(col => headers[columnMap[col]]);
+      const mappedRows = filteredRows.map(row => _petQcRequiredColumns.map(col => {
+        const v = row[columnMap[col]];
+        return v === undefined || v === null ? '' : v;
+      }));
+      return {
+        headers: displayHeaders,
+        rows: mappedRows,
+      };
+    }
+
+    function _buildPetQcCreateRows(headers, rows, columnMap) {
+      const filteredRows = _getPetQcFilteredRows(rows, columnMap);
+      const qcHeaders = _petQcQcColumns.map(column => column.key);
+      // Use only the required columns + QC columns for display in the QC file view.
+      const displayHeaders = _getPetQcDisplayHeaders([..._petQcRequiredColumns, ...qcHeaders]);
+      const outputRows = filteredRows.map(row => [
+        ..._petQcRequiredColumns.map(column => {
+          const v = row[columnMap[column]];
+          return v === undefined || v === null ? '' : v;
+        }),
+        ..._petQcQcColumns.map(() => ''),
+      ]);
+
+      return {
+        headers: [..._petQcRequiredColumns, ...qcHeaders],
+        displayHeaders,
+        rows: outputRows,
+      };
+    }
+
+    function _updatePetQcTransferLogPreview() {
+      const select = document.getElementById('petqc-transfer-log-select');
+      const preview = document.getElementById('petqc-transfer-log-preview');
+      if (!preview) return;
+      const transferLog = select ? String(select.value || '').trim() : '';
+      preview.textContent = transferLog ? `QC log: ${transferLog.replace(/transfer_log\.csv$/i, 'petqc_log.csv')}` : '';
+    }
+
+    async function _loadPetQcTransferLogFiles() {
+      const select = document.getElementById('petqc-transfer-log-select');
+      const preview = document.getElementById('petqc-transfer-log-preview');
+      const initBtn = document.getElementById('petqc-init-btn');
+      const createBtn = document.getElementById('petqc-create-btn');
+      if (!select) return;
+
+      select.disabled = true;
+      if (initBtn) initBtn.disabled = true;
+      if (createBtn) createBtn.disabled = true;
+      select.innerHTML = '<option value="">Loading transfer logs...</option>';
+      if (preview) preview.textContent = '';
+
+      try {
+        const res = await fetch(_addToken('/pet-get-transfer-log-files'));
+        if (res.status === 401 && window._handleAuthError) {
+          window._handleAuthError();
+          return;
+        }
+        if (!res.ok) {
+          throw new Error('Failed to load transfer log list (HTTP ' + res.status + ')');
+        }
+        const data = await res.json();
+        _petQcTransferLogFiles = Array.isArray(data.transfer_log_files) ? data.transfer_log_files : [];
+
+        if (!_petQcTransferLogFiles.length) {
+          select.innerHTML = '<option value="">No transfer logs found in utils/</option>';
+          select.disabled = true;
+          if (initBtn) initBtn.disabled = true;
+          if (createBtn) createBtn.disabled = true;
+          if (preview) preview.textContent = '';
+          _setPetQcStatus('No transfer_log.csv files found in utils/.', 'warn');
+          return;
+        }
+
+        select.innerHTML = _petQcTransferLogFiles
+          .map((path, index) => '<option value="' + escAttr(path) + '"' + (index === 0 ? ' selected' : '') + '>' + esc(path) + '</option>')
+          .join('');
+        select.disabled = false;
+        if (initBtn) initBtn.disabled = false;
+        if (createBtn) createBtn.disabled = false;
+        _updatePetQcTransferLogPreview();
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '';
+      } catch (err) {
+        console.error('Failed to load transfer log list:', err);
+        select.innerHTML = '<option value="">Failed to load transfer logs</option>';
+        select.disabled = true;
+        if (initBtn) initBtn.disabled = true;
+        if (createBtn) createBtn.disabled = true;
+        if (preview) preview.textContent = '';
+        _setPetQcStatus(err.message || 'Failed to load transfer log list.', 'err');
+      }
+    }
+
+    async function inspectPetQcTransferLog() {
+      try {
+        _setPetQcStatus('Loading transfer log...', 'warn');
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '';
+        const paths = _getSelectedPetQcPaths();
+        
+        // Load transfer log
+        const res = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.transferLog)));
+        if (!res.ok) {
+          _setPetQcStatus('Transfer log not found at ' + paths.transferLog, 'err');
+          return;
+        }
+        
+        const data = await res.json();
+        const headers = data.headers || [];
+        const rows = data.rows || [];
+
+        const columnMap = _getPetQcTransferLogColumns(headers);
+        if (!columnMap) {
+          _setPetQcStatus('Transfer log missing required columns: ' + _petQcRequiredColumns.join(', '), 'err');
+          return;
+        }
+
+        const transferTable = _buildPetQcTransferTableData(headers, rows, columnMap);
+
+        _petQcTransferLogData = {
+          path: paths.transferLog,
+          // Display-friendly, reduced headers/rows for the inspection table
+          headers: transferTable.headers,
+          rows: transferTable.rows,
+          // Preserve original fetched CSV so create uses full rows and correct indices
+          originalHeaders: headers,
+          originalRows: rows,
+          columnMap,
+        };
+
+        renderPetQcTransferLogTable();
+        _setPetQcStatus(`Inspected: ${transferTable.rows.length} filtered rows`, 'ok');
+      } catch (err) {
+        console.error('inspectPetQcTransferLog error:', err);
+        _setPetQcStatus('Error: ' + err.message, 'err');
+      }
+    }
+
+    async function _loadTransferLogForQcCreation() {
+      if (_petQcTransferLogData) {
+        // If we have the original full CSV stored from Inspect, return that to preserve
+        // column indices. Otherwise return the cached reduced view (legacy fallback).
+        if (_petQcTransferLogData.originalHeaders && _petQcTransferLogData.originalRows) {
+          return {
+            path: _petQcTransferLogData.path,
+            headers: _petQcTransferLogData.originalHeaders,
+            rows: _petQcTransferLogData.originalRows,
+            columnMap: _petQcTransferLogData.columnMap,
+          };
+        }
+        return _petQcTransferLogData;
+      }
+
+      const paths = _getSelectedPetQcPaths();
+      const res = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.transferLog)));
+      if (!res.ok) {
+        throw new Error('Transfer log not found at ' + paths.transferLog);
+      }
+
+      const data = await res.json();
+      const headers = data.headers || [];
+      const rows = data.rows || [];
+      const columnMap = _getPetQcTransferLogColumns(headers);
+      if (!columnMap) {
+        throw new Error('Transfer log missing required columns: ' + _petQcRequiredColumns.join(', '));
+      }
+
+      return {
+        path: paths.transferLog,
+        headers,
+        rows,
+        columnMap,
+      };
+    }
+
+    function renderPetQcTransferLogTable() {
+      const data = _petQcTransferLogData;
+      const wrap = document.getElementById('petqc-transfer-table-wrap');
+      const tbl = document.getElementById('petqc-transfer-table');
+      const meta = document.getElementById('petqc-transfer-meta');
+      if (!wrap || !tbl || !meta) return;
+
+      if (!data || !data.headers.length) {
+        wrap.style.display = 'none';
+        meta.textContent = '';
+        return;
+      }
+
+      const headHtml = '<thead><tr>' + data.headers.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead>';
+      const bodyHtml = '<tbody>' + data.rows.map(row => {
+        return '<tr>' + data.headers.map((_, colIndex) => '<td>' + esc(String(row[colIndex] || '')) + '</td>').join('') + '</tr>';
+      }).join('') + '</tbody>';
+
+      tbl.innerHTML = headHtml + bodyHtml;
+      wrap.style.display = '';
+      meta.textContent = `Rows: ${data.rows.length}`;
+    }
+
+    async function createPetQcFromTransferLog(forceOverwrite = false) {
+      try {
+        _setPetQcQcStatus('Creating QC log...', 'warn');
+        const transferData = await _loadTransferLogForQcCreation();
+        const paths = _getSelectedPetQcPaths();
+
+        if (!forceOverwrite) {
+          const checkRes = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.qcLog)));
+          if (checkRes.ok) {
+            document.getElementById('petqc-create-overlay').style.display = '';
+            document.getElementById('petqc-create-dialog').style.display = '';
+            document.getElementById('petqc-create-preview').textContent = paths.qcLog;
+            document.getElementById('petqc-create-confirm-checkbox').checked = false;
+            document.getElementById('petqc-create-confirm-btn').disabled = true;
+            _setPetQcQcStatus('QC log already exists. Confirm overwrite to continue.', 'warn');
+            return;
+          }
+        }
+
+        const createRows = _buildPetQcCreateRows(transferData.headers, transferData.rows, transferData.columnMap);
+        const saveRes = await fetch(_addToken('/save-target-file'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: paths.qcLog,
+            headers: createRows.headers,
+            rows: createRows.rows,
+            status_columns: _petQcQcColumns.map(column => column.key),
+          }),
+        });
+
+        if (!saveRes.ok) {
+          _setPetQcQcStatus('Failed to create QC log', 'err');
+          _setPetQcStatus('', 'ok');
+          throw new Error('Failed to create QC log');
+        }
+
+        _petQcCurrentData = {
+          path: paths.qcLog,
+          headers: createRows.headers,
+          displayHeaders: createRows.displayHeaders,
+          rows: createRows.rows,
+        };
+        renderPetQcTable();
+        const actualRows = (_petQcCurrentData && Array.isArray(_petQcCurrentData.rows)) ? _petQcCurrentData.rows.length : 0;
+        _setPetQcQcStatus(`✓ Created QC log with ${actualRows} rows`, 'ok');
+        _setPetQcStatus('', 'ok');
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '✓';
+      } catch (err) {
+        console.error('createPetQcFromTransferLog error:', err);
+        _setPetQcQcStatus('Error: ' + err.message, 'err');
+        _setPetQcStatus('', 'ok');
+      }
+    }
+
+    function closePetQcCreateDialog() {
+      document.getElementById('petqc-create-overlay').style.display = 'none';
+      document.getElementById('petqc-create-dialog').style.display = 'none';
+      document.getElementById('petqc-create-confirm-checkbox').checked = false;
+      document.getElementById('petqc-create-confirm-btn').disabled = true;
+    }
+
+    function refreshPetQcCreateConfirm() {
+      document.getElementById('petqc-create-confirm-btn').disabled = !document.getElementById('petqc-create-confirm-checkbox').checked;
+    }
+
+    async function executePetQcCreateFromTransferLog(forceOverwrite = false) {
+      if (!forceOverwrite) {
+        await createPetQcFromTransferLog(false);
+        return;
+      }
+
+      closePetQcCreateDialog();
+      await createPetQcFromTransferLog(true);
+    }
+
+    async function loadPetQcFile() {
+      try {
+        _setPetQcQcStatus('Loading QC tracking...', 'warn');
+        const paths = _getSelectedPetQcPaths();
+        
+        const res = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.qcLog)));
+        if (!res.ok) {
+          _setPetQcQcStatus('QC log not found. Create it from the transfer log first.', 'err');
+          return;
+        }
+        
+        const data = await res.json();
+        _petQcCurrentData = {
+          path: paths.qcLog,
+          headers: data.headers || [],
+          displayHeaders: _getPetQcDisplayHeaders(data.headers || []),
+          rows: data.rows || [],
+        };
+        
+        _setPetQcQcStatus(`Loaded: ${(data.rows || []).length} records`, 'ok');
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '✓';
+        renderPetQcTable();
+      } catch (err) {
+        console.error('loadPetQcFile error:', err);
+        _setPetQcQcStatus('Error: ' + err.message, 'err');
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '';
+      }
+    }
+
+    function renderPetQcTable() {
+      if (!_petQcCurrentData) return;
+      const headers = _petQcCurrentData.displayHeaders || _petQcCurrentData.headers || [];
+      const { rows } = _petQcCurrentData;
+      if (!headers.length) {
+        document.getElementById('petqc-table-wrap').style.display = 'none';
+        return;
+      }
+
+      const tbl = document.getElementById('petqc-table');
+      const headHtml = '<thead><tr>' + headers.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead>';
+      const bodyHtml = '<tbody>' + rows.map(row => {
+        return '<tr>' + headers.map((_, colIndex) => '<td>' + esc(String(row[colIndex] || '')) + '</td>').join('') + '</tr>';
+      }).join('') + '</tbody>';
+
+      tbl.innerHTML = headHtml + bodyHtml;
+      document.getElementById('petqc-table-wrap').style.display = '';
+      
+      const meta = document.getElementById('petqc-meta');
+      meta.textContent = `Rows: ${rows.length}`;
+    }
+
+    async function savePetQcFile() {
+      if (!_petQcCurrentData) {
+        alert('Load or initialize QC tracking first.');
+        return;
+      }
+      try {
+        const res = await fetch(_addToken('/save-target-file'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: _petQcCurrentData.path,
+            headers: _petQcCurrentData.headers,
+            rows: _petQcCurrentData.rows,
+            status_columns: [],
+          }),
+        });
+        if (!res.ok) throw new Error('Save failed');
+        _setPetQcQcStatus('Saved successfully', 'ok');
+      } catch (err) {
+        console.error('savePetQcFile error:', err);
+        alert('Failed to save: ' + err.message);
+      }
+    }
+
+    function showPetQcRestartDialog() {
+      if (!_petQcCurrentData) {
+        alert('Load or initialize QC tracking first.');
+        return;
+      }
+      const paths = _getSelectedPetQcPaths();
+      document.getElementById('petqc-restart-overlay').style.display = '';
+      document.getElementById('petqc-restart-dialog').style.display = '';
+      document.getElementById('petqc-restart-preview').textContent = paths.qcLog;
+      document.getElementById('petqc-restart-confirm-checkbox').checked = false;
+      document.getElementById('petqc-restart-confirm-btn').disabled = true;
+    }
+
+    function closePetQcRestartDialog() {
+      document.getElementById('petqc-restart-overlay').style.display = 'none';
+      document.getElementById('petqc-restart-dialog').style.display = 'none';
+      document.getElementById('petqc-restart-confirm-checkbox').checked = false;
+      document.getElementById('petqc-restart-confirm-btn').disabled = true;
+    }
+
+    function refreshPetQcRestartConfirm() {
+      document.getElementById('petqc-restart-confirm-btn').disabled = !document.getElementById('petqc-restart-confirm-checkbox').checked;
+    }
+
+    async function executePetQcRestart() {
+      closePetQcRestartDialog();
+      try {
+        const paths = _getSelectedPetQcPaths();
+        const res = await fetch(_addToken('/reset-target-file'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: paths.qcLog,
+            headers: _petQcCurrentData.headers,
+            rows: [],
+          }),
+        });
+        if (!res.ok) throw new Error('Restart failed');
+        _petQcCurrentData.rows = [];
+        renderPetQcTable();
+        _setPetQcStatus('Restarted', 'ok');
+      } catch (err) {
+        alert('Failed to restart: ' + err.message);
+      }
+    }
+
+    function showPetQcMergeDialog() {
+      if (!_petQcCurrentData) {
+        alert('Load or initialize QC tracking first.');
+        return;
+      }
+      document.getElementById('petqc-merge-overlay').style.display = '';
+      document.getElementById('petqc-merge-dialog').style.display = '';
+    }
+
+    function closePetQcMergeDialog() {
+      document.getElementById('petqc-merge-overlay').style.display = 'none';
+      document.getElementById('petqc-merge-dialog').style.display = 'none';
+    }
+
+    async function executePetQcMerge() {
+      if (!_petQcCurrentData) return;
+      try {
+        closePetQcMergeDialog();
+        _setPetQcQcStatus('Merging new rows...', 'warn');
+        
+        const paths = _getSelectedPetQcPaths();
+        
+        // Load updated transfer log
+        const res = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.transferLog)));
+        if (!res.ok) throw new Error('Transfer log not found');
+        
+        const data = await res.json();
+        const headers = data.headers || [];
+        const rows = data.rows || [];
+
+        const columnMap = _getPetQcTransferLogColumns(headers);
+        if (!columnMap) {
+          throw new Error('Transfer log missing required columns: ' + _petQcRequiredColumns.join(', '));
+        }
+
+        // Filter to cir_facility == 3
+        const filteredRows = _getPetQcFilteredRows(rows, columnMap);
+
+        // Build new rows in the required transfer-log + QC column order
+        const newRows = filteredRows.map(row => [
+          ..._petQcRequiredColumns.map(col => row[columnMap[col]]),
+          ..._petQcQcColumns.map(() => ''),
+        ]);
+
+        // Merge: keep existing rows, add new ones not already present
+        const existingCirIds = new Set(_petQcCurrentData.rows.map(r => String(r[0] || '').trim()));
+        let addedCount = 0;
+        for (const newRow of newRows) {
+          const cirId = String(newRow[0] || '').trim();
+          if (!existingCirIds.has(cirId)) {
+            _petQcCurrentData.rows.push(newRow);
+            existingCirIds.add(cirId);
+            addedCount++;
+          }
+        }
+        
+        // Save
+        await savePetQcFile();
+        renderPetQcTable();
+        _setPetQcQcStatus(`Merged: ${addedCount} new rows added`, 'ok');
+      } catch (err) {
+        console.error('executePetQcMerge error:', err);
+        _setPetQcQcStatus('Error: ' + err.message, 'err');
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // PETPrep Command Generator Functions
+    // ════════════════════════════════════════════════════════════════════════════════
+
+    function _setPetprepStatus(msg, type = 'ok') {
+      const el = document.getElementById('petprep-gen-status');
+      if (el) {
+        el.textContent = msg;
+        el.style.color = type === 'err' ? '#f48771' : (type === 'warn' ? '#ffd700' : '#4ec9b0');
+      }
+    }
+
+    function _setPetprepRunStatus(msg, type = 'ok') {
+      const el = document.getElementById('petprep-run-status');
+      if (el) {
+        el.textContent = msg;
+        el.style.color = type === 'err' ? '#f48771' : (type === 'warn' ? '#ffd700' : '#4ec9b0');
+      }
+    }
+
+    function _setPetprepCommandDisplay(cmd) {
+      const display = document.getElementById('petprep-command-display');
+      if (display) {
+        display.textContent = cmd || '(No command generated yet)';
+      }
+    }
+
+    function _setPetprepRunOutput(text, metaText) {
+      const output = document.getElementById('petprep-run-output');
+      const meta = document.getElementById('petprep-run-output-meta');
+      if (output) {
+        output.textContent = text || 'No PETPrep command has been run yet.';
+        output.scrollTop = output.scrollHeight;
+      }
+      if (meta) {
+        meta.textContent = metaText || 'Idle';
+      }
+    }
+
+    function _clearPetprepRunOutput(metaText) {
+      const output = document.getElementById('petprep-run-output');
+      const meta = document.getElementById('petprep-run-output-meta');
+      if (output) {
+        output.textContent = '';
+        output.scrollTop = 0;
+      }
+      if (meta) {
+        meta.textContent = metaText || 'Idle';
+      }
+    }
+
+    function _appendPetprepRunOutput(text, metaText) {
+      const output = document.getElementById('petprep-run-output');
+      const meta = document.getElementById('petprep-run-output-meta');
+      if (output) {
+        const next = output.textContent && output.textContent !== 'No PETPrep command has been run yet.'
+          ? output.textContent + (output.textContent.endsWith('\n') ? '' : '\n') + text
+          : text;
+        output.textContent = next;
+        output.scrollTop = output.scrollHeight;
+      }
+      if (meta && metaText) {
+        meta.textContent = metaText;
+      }
+    }
+
+    function _stopPetprepRunPolling() {
+      if (_petprepRunPollTimer) {
+        clearInterval(_petprepRunPollTimer);
+        _petprepRunPollTimer = null;
+      }
+    }
+
+    async function _refreshPetprepRunOutput() {
+      try {
+        const res = await fetch(_addToken('/petprep-run-log'));
+        if (res.status === 404) {
+          _setPetprepRunOutput('No PETPrep log yet.', 'Idle');
+          return false;
+        }
+        if (!res.ok) {
+          throw new Error('Failed to load PETPrep output (HTTP ' + res.status + ')');
+        }
+        const data = await res.json();
+        _setPetprepRunOutput(data.content || '', data.running ? ('Running (pid ' + (data.pid || '?') + ')') : 'Finished');
+        return !!data.running;
+      } catch (err) {
+        console.error('Failed to refresh PETPrep run output:', err);
+        _setPetprepRunOutput('Failed to load PETPrep output: ' + err.message, 'Error');
+        return false;
+      }
+    }
+
+    async function _startPetprepRunPolling() {
+      _stopPetprepRunPolling();
+      await _refreshPetprepRunOutput();
+      _petprepRunPollTimer = setInterval(async () => {
+        const stillRunning = await _refreshPetprepRunOutput();
+        if (!stillRunning) {
+          _stopPetprepRunPolling();
+        }
+      }, 2000);
+    }
+
+    function _getPetprepSelectedContainer() {
+      const select = document.getElementById('petprep-container-select');
+      const value = select ? String(select.value || '').trim() : '';
+      if (!value) {
+        throw new Error('Select a PETPrep container.');
+      }
+      return value;
+    }
+
+    function _resolvePetprepProjectPath(relPath) {
+      const cleaned = String(relPath || '').trim().replace(/^\/+/, '');
+      if (!cleaned) return '';
+      return _projectRoot ? (_projectRoot.replace(/\/+$/, '') + '/' + cleaned) : cleaned;
+    }
+
+    async function _loadPetprepContainerFiles() {
+      const select = document.getElementById('petprep-container-select');
+      if (!select) return;
+      select.disabled = true;
+      select.innerHTML = '<option value="">Loading PETPrep containers...</option>';
+
+      try {
+        const res = await fetch(_addToken('/petprep-get-container-files'));
+        if (res.status === 401 && window._handleAuthError) {
+          window._handleAuthError();
+          return;
+        }
+        if (!res.ok) {
+          throw new Error('Failed to load PETPrep containers (HTTP ' + res.status + ')');
+        }
+        const data = await res.json();
+        _petprepContainerFiles = Array.isArray(data.container_files) ? data.container_files : [];
+        if (!_petprepContainerFiles.length) {
+          select.innerHTML = '<option value="">No PETPrep containers found</option>';
+          select.disabled = true;
+          _setPetprepStatus('No container paths containing "petprep" were found under /scratch/singularityContainers.', 'warn');
+          return;
+        }
+
+        select.innerHTML = _petprepContainerFiles.map((path, index) => '<option value="' + escAttr(path) + '"' + (index === 0 ? ' selected' : '') + '>' + esc(path) + '</option>').join('');
+        select.disabled = false;
+        _setPetprepStatus('Loaded ' + _petprepContainerFiles.length + ' PETPrep containers', 'ok');
+      } catch (err) {
+        console.error('Failed to load PETPrep containers:', err);
+        select.innerHTML = '<option value="">Failed to load PETPrep containers</option>';
+        select.disabled = true;
+        _setPetprepStatus(err.message || 'Failed to load PETPrep containers.', 'err');
+      }
+    }
+
+    function _buildPetprepCommand() {
+      const bidsPath = _resolvePetprepProjectPath(document.getElementById('petprep-bids-path').value);
+      const outPath = _resolvePetprepProjectPath(document.getElementById('petprep-out-path').value);
+      const licensePath = _resolvePetprepProjectPath(document.getElementById('petprep-license-path').value);
+      const tempflowPath = _resolvePetprepProjectPath(document.getElementById('petprep-tempflow-path').value);
+      const containerPath = _getPetprepSelectedContainer();
+      const participant = String(document.getElementById('petprep-participant').value || '').trim();
+      const skipValidation = !!document.getElementById('petprep-skip-validation')?.checked;
+      const continuation = '\\';
+
+      if (!bidsPath) throw new Error('BIDS input directory is required.');
+      if (!outPath) throw new Error('Output directory is required.');
+      if (!licensePath) throw new Error('License file path is required.');
+      if (!tempflowPath) throw new Error('Temp cache / templateflow directory is required.');
+
+      const lines = [
+        'singularity run ' + continuation,
+        '  --cleanenv ' + continuation,
+        '  --bind ' + bidsPath + ':/bids:ro ' + continuation,
+        '  --bind ' + outPath + ':/out ' + continuation,
+        '  --bind ' + licensePath + ':/license:ro ' + continuation,
+        '  --bind ' + tempflowPath + ':/templateflow ' + continuation,
+        '  --env TEMPLATEFLOW_HOME=/templateflow ' + continuation,
+        '  --env MPLCONFIGDIR=/templateflow/matplotlib ' + continuation,
+        '  ' + containerPath + ' ' + continuation,
+        '  /bids /out participant ' + continuation,
+      ];
+
+      if (skipValidation) {
+        lines.push('  --skip_bids_validation ' + continuation);
+      }
+      if (participant) {
+        lines.push('  --participant-label ' + participant + ' ' + continuation);
+      }
+      lines.push('  --fs-license-file /license ' + continuation);
+      lines.push('  --work-dir /out/work');
+      return lines.join('\n');
+    }
+
+    async function _savePetprepCommandText(cmd) {
+      try {
+        const res = await fetch(_addToken('/petprep-save-command'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: cmd }),
+        });
+        return res.ok;
+      } catch (err) {
+        console.error('Failed to save PETPrep command:', err);
+        return false;
+      }
+    }
+
+    async function loadPetprepCommand() {
+      try {
+        _setPetprepRunStatus('Loading saved command...', 'warn');
+        const res = await fetch(_addToken('/petprep-load-command'));
+        if (res.status === 404) {
+          _setPetprepRunStatus('No saved command found.', 'warn');
+          return;
+        }
+        if (!res.ok) {
+          throw new Error('Failed to load saved command (HTTP ' + res.status + ')');
+        }
+        const data = await res.json();
+        const cmd = String(data.command || '').trim();
+        if (!cmd) {
+          _setPetprepRunStatus('Saved command is empty.', 'warn');
+          return;
+        }
+        _petprepCurrentCommand = cmd;
+        _setPetprepCommandDisplay(cmd);
+        document.getElementById('petprep-run-btn').disabled = false;
+        document.getElementById('petprep-copy-btn').disabled = false;
+        document.getElementById('petprep-save-btn').disabled = false;
+        _setPetprepRunStatus('Loaded saved command', 'ok');
+      } catch (err) {
+        console.error('loadPetprepCommand error:', err);
+        _setPetprepRunStatus('Error loading command: ' + err.message, 'err');
+      }
+    }
+
+    function generatePetprepCommand() {
+      try {
+        const cmd = _buildPetprepCommand();
+        _petprepCurrentCommand = cmd;
+        _setPetprepCommandDisplay(cmd);
+        document.getElementById('petprep-run-btn').disabled = false;
+        document.getElementById('petprep-copy-btn').disabled = false;
+        document.getElementById('petprep-save-btn').disabled = false;
+        _setPetprepStatus('Command generated successfully (not saved)', 'ok');
+        _setPetprepRunOutput('Generated command is ready to run.\n\n' + cmd, 'Ready');
+      } catch (err) {
+        console.error('generatePetprepCommand error:', err);
+        _petprepCurrentCommand = '';
+        _setPetprepCommandDisplay('');
+        document.getElementById('petprep-run-btn').disabled = true;
+        document.getElementById('petprep-copy-btn').disabled = true;
+        document.getElementById('petprep-save-btn').disabled = true;
+        _setPetprepStatus('Error: ' + err.message, 'err');
+      }
+    }
+
+    async function savePetprepCommand() {
+      if (!_petprepCurrentCommand) {
+        _setPetprepRunStatus('No command to save.', 'warn');
+        return;
+      }
+      try {
+        // Check if a saved command already exists
+        const check = await fetch(_addToken('/petprep-load-command'));
+        if (check.ok) {
+          const ok = confirm('A saved PETPrep command already exists. Overwrite?');
+          if (!ok) {
+            _setPetprepRunStatus('Save cancelled', 'warn');
+            return;
+          }
+        }
+        const saved = await _savePetprepCommandText(_petprepCurrentCommand);
+        if (saved) {
+          _setPetprepRunStatus('Command saved', 'ok');
+        } else {
+          _setPetprepRunStatus('Failed to save command', 'err');
+        }
+      } catch (err) {
+        console.error('savePetprepCommand error:', err);
+        _setPetprepRunStatus('Error saving command: ' + err.message, 'err');
+      }
+    }
+
+    function copyPetprepCommand() {
+      if (!_petprepCurrentCommand) {
+        _setPetprepRunStatus('No command to copy.', 'warn');
+        return;
+      }
+      navigator.clipboard.writeText(_petprepCurrentCommand).then(() => {
+        _setPetprepRunStatus('Command copied to clipboard', 'ok');
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        _setPetprepRunStatus('Failed to copy command', 'err');
+      });
+    }
+
+    async function runPetprepInTerminal() {
+      if (!_petprepCurrentCommand) {
+        alert('Generate or load a command first.');
+        return;
+      }
+      try {
+        document.getElementById('petprep-run-btn').disabled = true;
+        _setPetprepRunStatus('Starting PETPrep...', 'warn');
+        _clearPetprepRunOutput('Starting');
+        _appendPetprepRunOutput('Launching PETPrep...');
+        _appendPetprepRunOutput('');
+        _appendPetprepRunOutput(_petprepCurrentCommand);
+        const res = await fetch(_addToken('/petprep-run-command'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: _petprepCurrentCommand }),
+        });
+        if (!res.ok) throw new Error('Run request failed (HTTP ' + res.status + ')');
+        const data = await res.json();
+        _appendPetprepRunOutput('Started process PID ' + (data.pid || 'unknown') + '.\nLog: ' + (data.log || 'utils/petprep_run.log'), 'Running');
+        _setPetprepRunStatus('Started (pid=' + (data.pid || 'unknown') + '), log: ' + (data.log || 'petprep_run.log'), 'ok');
+        _startPetprepRunPolling();
+      } catch (err) {
+        console.error('runPetprepInTerminal error:', err);
+        _setPetprepRunStatus('Error: ' + err.message, 'err');
+      } finally {
+        document.getElementById('petprep-run-btn').disabled = false;
+      }
+    }
+
     return {
+
       switchSubTab,
       runOverview,
       runRawDataOverview,
@@ -2205,6 +3258,28 @@
       mergeFileSelected,
       executeMerge,
       refreshEditability,
+      // New PET QC functions
+      initializePetQc: inspectPetQcTransferLog,
+      inspectPetQcTransferLog,
+      createPetQcFromTransferLog,
+      closePetQcCreateDialog,
+      refreshPetQcCreateConfirm,
+      executePetQcCreateFromTransferLog,
+      loadPetQcFile,
+      savePetQcFile,
+      showPetQcRestartDialog,
+      closePetQcRestartDialog,
+      refreshPetQcRestartConfirm,
+      executePetQcRestart,
+      showPetQcMergeDialog,
+      closePetQcMergeDialog,
+      executePetQcMerge,
+      // PETPrep functions
+      generatePetprepCommand,
+      loadPetprepCommand,
+      savePetprepCommand,
+      copyPetprepCommand,
+      runPetprepInTerminal,
       onTabSwitch(_name) {
         const rawPane = document.getElementById('pet-tab-raw');
         const editorPane = document.getElementById('pet-tab-editor');
@@ -2225,6 +3300,11 @@
         _token = token || urlToken || null;
         initializeAndLoad();
         loadHelperSummary(true);
+        _loadPetQcTransferLogFiles();
+        const select = document.getElementById('petqc-transfer-log-select');
+        if (select) {
+          select.addEventListener('change', _updatePetQcTransferLogPreview);
+        }
       },
     };
   })();

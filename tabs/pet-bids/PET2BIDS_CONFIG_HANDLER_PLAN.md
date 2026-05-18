@@ -37,7 +37,7 @@ Implement a local adapter layer that consumes `dcm2bids_config_pet.json` and tra
 ### Adapter responsibilities
 
 1. Load `dcm2bids_config_pet.json`.
-2. Discover PET sessions from input root (`raw/bmic` in UI requirements).
+2. Discover PET sessions from input root (`raw/pet` in UI requirements).
 3. Apply recode table (`sessions_recode_mr.csv` / `sessions_recode_pet.csv`) exactly as MR does.
 4. For each selected session:
    - Evaluate config criteria against helper metadata.

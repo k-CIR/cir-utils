@@ -27,7 +27,7 @@ def _detect_project_root(script_dir):
     match = re.match(r"^(/data/projects/[^/]+)(?:/|$)", resolved)
     if match:
         return match.group(1)
-    # Fallback: tab dir is <project>/bids-utils-mr/tabs/<tab>
+    # Fallback: tab dir is <project>/cir-utils/tabs/<tab>
     return os.path.realpath(os.path.join(script_dir, "..", "..", ".."))
 
 _CFG_PATH = os.path.join(_TAB_DIR, "config_builder.py")
