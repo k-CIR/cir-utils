@@ -370,7 +370,10 @@ if __name__ == "__main__":
         print()
         print(f"\033[1;32mAccess URL: http://localhost:{PORT}/?token={AUTH_TOKEN}\033[0m")
         print()
-        print("Ctrl+C to stop process and close tunnel")
+        print("If running server.py directly on SPICE, run this in a new LOCAL terminal to open a SSH tunnel:")
+        print(f"  ssh -N -L {PORT}:localhost:{PORT} YOUR_USERNAME@compute.kcir.se")
+        print()
+        print("Ctrl+C to stop the server")
         print()
         _httpd.serve_forever()
     except KeyboardInterrupt:
