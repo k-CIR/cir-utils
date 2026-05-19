@@ -200,8 +200,17 @@ def _resolve_source_dir(src, matched_desc=None):
 
     best_dir, best_stat = max(dir_stats.items(), key=_score)
 
+    # If any specific criteria were provided, require each provided criterion
+    # to have at least one matching DICOM in the selected directory. This
+    # enforces AND semantics for specified criteria (SeriesDescription,
+    # ProtocolName, ImageType) rather than accepting a directory when only
+    # a subset of criteria (or modality) match.
     if expected_sd or expected_pn or expected_it:
-        if best_stat["sd_match"] + best_stat["pn_match"] + best_stat["it_match"] == 0:
+        if (
+            (expected_sd and best_stat["sd_match"] == 0)
+            or (expected_pn and best_stat["pn_match"] == 0)
+            or (expected_it and best_stat["it_match"] == 0)
+        ):
             return None
 
     print(f"Resolved {target.upper()} source folder: {best_dir}")
@@ -456,11 +465,16 @@ def _build_command(plan, matched_desc, clobber=False):
         cmd.append(filtered_src)
         return cmd, destination, filtered_src  # Return filtered_src so caller can clean up
 
+    criteria = matched.get("criteria") or {}
+    filtered_src = _filter_dicoms_by_criteria(src, criteria)
+    if not filtered_src:
+        raise ValueError("No DICOM series matched the criteria")
+
     cmd = [
         "python",
         "-m",
         "pypet2bids.dcm2niix4pet",
-        src,
+        filtered_src,
         "--destination-path",
         destination,
     ]
@@ -485,7 +499,7 @@ def _build_command(plan, matched_desc, clobber=False):
         cmd.append("--dcm2niix-options")
         cmd.extend([str(item) for item in dcm2niix_options])
 
-    return cmd, destination
+    return cmd, destination, filtered_src
 
 
 def main(argv=None):
