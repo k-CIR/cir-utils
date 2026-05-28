@@ -38,7 +38,7 @@
           <label>Raw Directory <span id="val-raw" class="path-validation"></span></label>
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixRaw">/data/projects/.../</span>
-            <input type="text" id="megCfgRawDir" class="path-input-relative" placeholder="raw/natmeg" value="raw/natmeg" oninput="megBids.syncFormToJson()">
+            <input type="text" id="megCfgRawDir" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()">
           </div>
         </div>
 
@@ -47,7 +47,7 @@
           <label>BIDS Directory <span id="val-bids" class="path-validation"></span></label>
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixBids">/data/projects/.../</span>
-            <input type="text" id="megCfgBidsDir" class="path-input-relative" placeholder="BIDS" value="BIDS" oninput="megBids.syncFormToJson()">
+            <input type="text" id="megCfgBidsDir" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()">
           </div>
         </div>
 
@@ -65,7 +65,7 @@
           <label>Conversion Table File <span id="val-conv" class="path-validation"></span></label>
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixConv">/data/projects/.../</span>
-            <input type="text" id="megCfgConversionFile" class="path-input-relative" placeholder="utils/meg_bids_conversion.tsv" value="utils/meg_bids_conversion.tsv" oninput="megBids.syncFormToJson()">
+            <input type="text" id="megCfgConversionFile" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()">
           </div>
         </div>
 
@@ -85,7 +85,7 @@
           <label>Config File <span id="val-config" class="path-validation"></span></label>
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixConfig">/data/projects/.../</span>
-              <input type="text" id="megCfgConfigFile" class="path-input-relative" placeholder="meg_bids_config.json" value="meg_bids_config.json" oninput="megBids.syncFormToJson()">
+              <input type="text" id="megCfgConfigFile" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()">
           </div>
         </div>
         <br>
@@ -131,13 +131,13 @@
          <button id="megAnalyzeBtn" class="btn">Analyze / Refresh</button>
          <button id="megSaveTableBtn" class="btn primary" disabled>Save Table</button>
          <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem; margin-left:8px;">
-           <input type="checkbox" id="megAnalyzeOverwriteCheck"> Overwrite existing conversion table
+           <input type="checkbox" id="megAnalyzeOverwriteCheck"> Force reanalyze (overwrite existing table)
          </label>
        </div>
        <div style="font-size:0.82rem; color:#9e9e9e; margin-bottom:0.4rem;">Conversion Table Path</div>
        <div class="path-row-compound" style="margin-bottom:1rem;">
          <span class="path-static-root" id="megRootPrefixTable">/data/projects/.../</span>
-         <input type="text" id="megTablePath" class="path-input-relative" placeholder="utils/meg_bids_conversion.tsv">
+         <input type="text" id="megTablePath" class="path-input-relative" placeholder="">
        </div>
        <div id="megTableStatus" class="muted"></div>
        <div id="megStatusLegend" class="status-legend" style="display:none;"></div>

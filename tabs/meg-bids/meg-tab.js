@@ -29,6 +29,116 @@
     }
   };
 
+  const MEG_CONSTANTS = {
+    defaults: {
+      raw_dir: 'raw/natmeg',
+      bids_dir: 'BIDS',
+      conversion_file: 'utils/meg_bids_conversion.tsv',
+      config_file: 'meg_bids_config.json'
+    },
+    api: {
+      getConfig: '/meg-get-config',
+      getProjectRoot: '/meg-get-project-root',
+      validatePaths: '/meg-validate-paths',
+      loadConfig: '/meg-load-config',
+      saveConfig: '/meg-save-config',
+      runAnalysis: '/meg-run-analysis',
+      loadConversionTable: '/meg-load-conversion-table',
+      saveConversionTable: '/meg-save-conversion-table',
+      runBidsify: '/meg-run-bidsify',
+      bidsifyProgress: '/meg-bidsify-progress',
+      runReport: '/meg-run-report',
+      getReport: '/meg-get-report'
+    },
+    stepPrefix: 'meg-step-',
+    containerSelector: '#meg-bids-container',
+    ids: {
+      projectRootDisplay: 'megProjectRootDisplay',
+      projectNameDisplay: 'megProjectNameDisplay',
+      rootPrefixRaw: 'megRootPrefixRaw',
+      rootPrefixBids: 'megRootPrefixBids',
+      rootPrefixConv: 'megRootPrefixConv',
+      rootPrefixConfig: 'megRootPrefixConfig',
+      rootPrefixTable: 'megRootPrefixTable',
+      rawDir: 'megCfgRawDir',
+      bidsDir: 'megCfgBidsDir',
+      conversionFile: 'megCfgConversionFile',
+      configFile: 'megCfgConfigFile',
+      overwrite: 'megCfgOverwrite',
+      tablePath: 'megTablePath',
+      tasksList: 'megTasksList',
+      searchInput: 'megSearchInput',
+      clearFiltersBtn: 'megClearFiltersBtn',
+      contextChecksChk: 'megContextChecksChk',
+      batchApplyBtn: 'megBatchApplyBtn',
+      batchApplyTaskBtn: 'megBatchApplyTaskBtn',
+      analyzeBtn: 'megAnalyzeBtn',
+      analyzeOverwriteCheck: 'megAnalyzeOverwriteCheck',
+      saveTableBtn: 'megSaveTableBtn',
+      selectAll: 'megSelectAll',
+      tableBody: 'megTableBody',
+      tableContainer: 'megTableContainer',
+      conversionTable: 'megConversionTable',
+      tableEmpty: 'megTableEmpty',
+      statusLegend: 'megStatusLegend',
+      filterPills: 'megFilterPills',
+      rowCount: 'megRowCount',
+      modalClose: 'megModalClose',
+      modalCancel: 'megModalCancel',
+      modalSave: 'megModalSave',
+      modalPrev: 'megModalPrev',
+      modalNext: 'megModalNext',
+      modalHeader: 'megModalHeader',
+      editModal: 'megEditModal',
+      advancedToggle: 'megAdvancedToggle',
+      advancedContent: 'megAdvancedContent',
+      helpTooltip: 'megHelpTooltip',
+      editSource: 'megEditSource',
+      editConverted: 'megEditConverted',
+      batchActions: 'megBatchActions',
+      selectedCount: 'megSelectedCount',
+      batchStatus: 'megBatchStatus',
+      batchTask: 'megBatchTask'
+    },
+    modalFields: {
+      subject: 'megEditSubject',
+      session: 'megEditSession',
+      task: 'megEditTask',
+      acquisition: 'megEditAcquisition',
+      run: 'megEditRun',
+      processing: 'megEditProcessing',
+      split: 'megEditSplit',
+      recording: 'megEditRecording',
+      space: 'megEditSpace',
+      description: 'megEditDescription',
+      trackingSystem: 'megEditTrackingSystem',
+      suffix: 'megEditSuffix',
+      extension: 'megEditExtension',
+      datatype: 'megEditDatatype',
+      status: 'megEditStatus'
+    },
+    validationIds: {
+      raw: 'val-raw',
+      bids: 'val-bids',
+      conv: 'val-conv',
+      config: 'val-config'
+    },
+    selectors: {
+      sortableHeaders: '#megConversionTable th[data-column]',
+      allHeaders: '#megConversionTable th',
+      tableHeaderCells: '#megConversionTable thead th',
+      modalBidsInputs: '#megEditModal input[data-bids-field], #megEditModal select[data-bids-field]',
+      progressFill: '#megProgressBar > div'
+    },
+    statusLegend: {
+      run: { label: 'ready to convert', icon: '▶' },
+      check: { label: 'needs review', icon: '⚠' },
+      processed: { label: 'already converted', icon: '✓' },
+      skip: { label: 'ignore', icon: '⏭' },
+      missing: { label: 'source file not found', icon: '✖' }
+    }
+  };
+
   // Help text for BIDS fields
   const HelpText = {
     subject: "BIDS subject ID (e.g., '01'). No 'sub-' prefix needed.",
@@ -54,11 +164,11 @@
     projectRoot: '',
     config: {
       project_name: 'MEG Dataset',
-      raw_dir: 'raw/natmeg',
-      bids_dir: 'BIDS',
+      raw_dir: MEG_CONSTANTS.defaults.raw_dir,
+      bids_dir: MEG_CONSTANTS.defaults.bids_dir,
       tasks: [],
-      conversion_file: 'utils/meg_bids_conversion.tsv',
-      config_file: 'meg_bids_config.json',
+      conversion_file: MEG_CONSTANTS.defaults.conversion_file,
+      config_file: MEG_CONSTANTS.defaults.config_file,
       overwrite: false
     },
 
@@ -82,13 +192,7 @@
       contextChecks: false
     },
 
-    statusLegendMeta: {
-      run: { label: 'ready to convert', icon: '▶' },
-      check: { label: 'needs review', icon: '⚠' },
-      processed: { label: 'already converted', icon: '✓' },
-      skip: { label: 'ignore', icon: '⏭' },
-      missing: { label: 'source file not found', icon: '✖' }
-    },
+    statusLegendMeta: MEG_CONSTANTS.statusLegend,
 
     // Sort state
     sort: {
@@ -117,8 +221,36 @@
       tempData: null
     },
 
+    getEl: function(idKey) {
+      const id = MEG_CONSTANTS.ids[idKey];
+      return id ? document.getElementById(id) : null;
+    },
+
+    getModalEl: function(fieldKey) {
+      const id = MEG_CONSTANTS.modalFields[fieldKey];
+      return id ? document.getElementById(id) : null;
+    },
+
+    getModalValue: function(fieldKey) {
+      return this.getModalEl(fieldKey)?.value || '';
+    },
+
+    applyDefaultInputPlaceholders: function() {
+      const rawEl = this.getEl('rawDir');
+      if (rawEl) rawEl.placeholder = MEG_CONSTANTS.defaults.raw_dir;
+      const bidsEl = this.getEl('bidsDir');
+      if (bidsEl) bidsEl.placeholder = MEG_CONSTANTS.defaults.bids_dir;
+      const convEl = this.getEl('conversionFile');
+      if (convEl) convEl.placeholder = MEG_CONSTANTS.defaults.conversion_file;
+      const cfgEl = this.getEl('configFile');
+      if (cfgEl) cfgEl.placeholder = MEG_CONSTANTS.defaults.config_file;
+      const tablePathEl = this.getEl('tablePath');
+      if (tablePathEl) tablePathEl.placeholder = MEG_CONSTANTS.defaults.conversion_file;
+    },
+
     // Initialize module
     init: async function() {
+      this.applyDefaultInputPlaceholders();
       await this.loadProjectRoot();
       const loadedDefaultConfig = await this.tryAutoLoadDefaultConfig();
       if (!loadedDefaultConfig) {
@@ -132,26 +264,26 @@
     // Load project root from server
     loadProjectRoot: async function() {
       try {
-        const res = await fetch(Utils.apiPath('/meg-get-project-root'));
+        const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.getProjectRoot));
         const data = await res.json();
         this.projectRoot = data.project_root || '/data/projects/unknown';
 
         // Update UI
         const rootPrefix = this.projectRoot + '/';
-        const rootDisplay = document.getElementById('megProjectRootDisplay');
+        const rootDisplay = this.getEl('projectRootDisplay');
         if (rootDisplay) rootDisplay.textContent = this.projectRoot;
 
-        ['megRootPrefixRaw', 'megRootPrefixBids', 'megRootPrefixConv', 'megRootPrefixConfig', 'megRootPrefixTable'].forEach(id => {
-          const el = document.getElementById(id);
+        ['rootPrefixRaw', 'rootPrefixBids', 'rootPrefixConv', 'rootPrefixConfig', 'rootPrefixTable'].forEach((idKey) => {
+          const el = this.getEl(idKey);
           if (el) el.textContent = rootPrefix;
         });
 
-        const tablePrefix = document.getElementById('megRootPrefixTable');
+        const tablePrefix = this.getEl('rootPrefixTable');
         if (tablePrefix) tablePrefix.textContent = rootPrefix;
 
         if (data.project_name) {
           this.config.project_name = data.project_name;
-          const nameDisplay = document.getElementById('megProjectNameDisplay');
+          const nameDisplay = this.getEl('projectNameDisplay');
           if (nameDisplay) nameDisplay.textContent = data.project_name;
         }
 
@@ -176,31 +308,31 @@
     },
 
     normalizeConversionFilePath: function(pathValue) {
-      const normalized = this.toProjectRelativePath(pathValue, 'utils/meg_bids_conversion.tsv');
+      const normalized = this.toProjectRelativePath(pathValue, MEG_CONSTANTS.defaults.conversion_file);
       const lower = String(normalized || '').toLowerCase();
       if (lower === 'bids_conversion.tsv' || lower === 'logs/bids_conversion.tsv') {
-        return 'utils/meg_bids_conversion.tsv';
+        return MEG_CONSTANTS.defaults.conversion_file;
       }
       return normalized;
     },
 
     normalizeConfigPaths: function() {
-      this.config.raw_dir = this.toProjectRelativePath(this.config.raw_dir, 'raw/natmeg');
-      this.config.bids_dir = this.toProjectRelativePath(this.config.bids_dir, 'BIDS');
+      this.config.raw_dir = this.toProjectRelativePath(this.config.raw_dir, MEG_CONSTANTS.defaults.raw_dir);
+      this.config.bids_dir = this.toProjectRelativePath(this.config.bids_dir, MEG_CONSTANTS.defaults.bids_dir);
       this.config.conversion_file = this.normalizeConversionFilePath(this.config.conversion_file);
-      this.config.config_file = this.toProjectRelativePath(this.config.config_file, 'meg_bids_config.json');
+      this.config.config_file = this.toProjectRelativePath(this.config.config_file, MEG_CONSTANTS.defaults.config_file);
     },
 
     // Step navigation
     switchStep: function(step) {
       this.currentStep = step;
 
-      document.querySelectorAll('#meg-bids-container .nav-item').forEach(el => {
+      document.querySelectorAll(`${MEG_CONSTANTS.containerSelector} .nav-item`).forEach(el => {
         el.classList.toggle('active', parseInt(el.dataset.step) === step);
       });
 
       document.querySelectorAll('.meg-step').forEach(el => {
-        el.classList.toggle('active', el.id === 'meg-step-' + step);
+        el.classList.toggle('active', el.id === MEG_CONSTANTS.stepPrefix + step);
       });
     },
 
@@ -230,11 +362,11 @@
 
     tryAutoLoadDefaultConfig: async function() {
       try {
-        const res = await fetch(Utils.apiPath('/meg-get-config'));
+        const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.getConfig));
         const data = await res.json();
         if (!data || !data.config_exists) return false;
 
-        return await this.loadConfigAtPath(this.config.config_file || 'meg_bids_config.json', { alertOnSuccess: false });
+        return await this.loadConfigAtPath(this.config.config_file || MEG_CONSTANTS.defaults.config_file, { alertOnSuccess: false });
       } catch (e) {
         console.error('Failed to autoload default config:', e);
         return false;
@@ -246,7 +378,7 @@
       const configPath = String(path || '').trim();
       if (!configPath) return false;
 
-      const res = await fetch(Utils.apiPath('/meg-load-config?path=' + encodeURIComponent(configPath)));
+      const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.loadConfig + '?path=' + encodeURIComponent(configPath)));
       const data = await res.json();
 
       if (data.error) {
@@ -257,19 +389,24 @@
       const savedProjectName = this.config.project_name;
       this.config = {
         project_name: savedProjectName,
-        raw_dir: this.toProjectRelativePath(serverConfig.Raw, 'raw/natmeg'),
-        bids_dir: this.toProjectRelativePath(serverConfig.BIDS, 'BIDS'),
+        raw_dir: this.toProjectRelativePath(serverConfig.Raw, MEG_CONSTANTS.defaults.raw_dir),
+        bids_dir: this.toProjectRelativePath(serverConfig.BIDS, MEG_CONSTANTS.defaults.bids_dir),
         tasks: serverConfig.Tasks || [],
-        conversion_file: this.toProjectRelativePath(serverConfig.Conversion_file, 'utils/meg_bids_conversion.tsv'),
-        config_file: this.toProjectRelativePath(serverConfig.config_file, 'meg_bids_config.json'),
+        conversion_file: this.toProjectRelativePath(serverConfig.Conversion_file, MEG_CONSTANTS.defaults.conversion_file),
+        config_file: this.toProjectRelativePath(serverConfig.config_file, MEG_CONSTANTS.defaults.config_file),
         overwrite: serverConfig.overwrite || false
       };
 
-      document.getElementById('megCfgRawDir').value = this.config.raw_dir;
-      document.getElementById('megCfgBidsDir').value = this.config.bids_dir;
-      document.getElementById('megCfgConversionFile').value = this.config.conversion_file;
-      document.getElementById('megCfgConfigFile').value = this.config.config_file;
-      document.getElementById('megCfgOverwrite').checked = this.config.overwrite;
+      const rawEl = this.getEl('rawDir');
+      if (rawEl) rawEl.value = this.config.raw_dir;
+      const bidsEl = this.getEl('bidsDir');
+      if (bidsEl) bidsEl.value = this.config.bids_dir;
+      const convEl = this.getEl('conversionFile');
+      if (convEl) convEl.value = this.config.conversion_file;
+      const cfgEl = this.getEl('configFile');
+      if (cfgEl) cfgEl.value = this.config.config_file;
+      const overwriteEl = this.getEl('overwrite');
+      if (overwriteEl) overwriteEl.checked = this.config.overwrite;
 
       this.renderTasks();
       this.updateJsonDisplay();
@@ -305,14 +442,14 @@
         if (el) el.value = val || '';
       };
 
-      setVal('megCfgRawDir', this.config.raw_dir);
-      setVal('megCfgBidsDir', this.config.bids_dir);
-      setVal('megCfgConversionFile', this.config.conversion_file);
-      setVal('megCfgConfigFile', this.config.config_file);
-      setVal('megTablePath', this.config.conversion_file);
+      setVal(MEG_CONSTANTS.ids.rawDir, this.config.raw_dir);
+      setVal(MEG_CONSTANTS.ids.bidsDir, this.config.bids_dir);
+      setVal(MEG_CONSTANTS.ids.conversionFile, this.config.conversion_file);
+      setVal(MEG_CONSTANTS.ids.configFile, this.config.config_file);
+      setVal(MEG_CONSTANTS.ids.tablePath, this.config.conversion_file);
       this.renderTasks();
 
-      const overwriteEl = document.getElementById('megCfgOverwrite');
+      const overwriteEl = this.getEl('overwrite');
       if (overwriteEl) overwriteEl.checked = this.config.overwrite || false;
     },
 
@@ -332,22 +469,22 @@
 
     // Sync form to JSON (live)
     syncFormToJson: function() {
-      this.config.raw_dir = this.toProjectRelativePath(document.getElementById('megCfgRawDir')?.value, 'raw/natmeg');
-      this.config.bids_dir = this.toProjectRelativePath(document.getElementById('megCfgBidsDir')?.value, 'BIDS');
-      this.config.conversion_file = this.toProjectRelativePath(document.getElementById('megCfgConversionFile')?.value, 'utils/meg_bids_conversion.tsv');
-      this.config.config_file = this.toProjectRelativePath(document.getElementById('megCfgConfigFile')?.value, 'meg_bids_config.json');
-      this.config.overwrite = document.getElementById('megCfgOverwrite')?.checked || false;
+      this.config.raw_dir = this.toProjectRelativePath(this.getEl('rawDir')?.value, MEG_CONSTANTS.defaults.raw_dir);
+      this.config.bids_dir = this.toProjectRelativePath(this.getEl('bidsDir')?.value, MEG_CONSTANTS.defaults.bids_dir);
+      this.config.conversion_file = this.toProjectRelativePath(this.getEl('conversionFile')?.value, MEG_CONSTANTS.defaults.conversion_file);
+      this.config.config_file = this.toProjectRelativePath(this.getEl('configFile')?.value, MEG_CONSTANTS.defaults.config_file);
+      this.config.overwrite = this.getEl('overwrite')?.checked || false;
       this.config.tasks = this.config.tasks || [];
 
-      const rawDirEl = document.getElementById('megCfgRawDir');
+      const rawDirEl = this.getEl('rawDir');
       if (rawDirEl) rawDirEl.value = this.config.raw_dir;
-      const bidsDirEl = document.getElementById('megCfgBidsDir');
+      const bidsDirEl = this.getEl('bidsDir');
       if (bidsDirEl) bidsDirEl.value = this.config.bids_dir;
-      const convEl = document.getElementById('megCfgConversionFile');
+      const convEl = this.getEl('conversionFile');
       if (convEl) convEl.value = this.config.conversion_file;
-      const cfgEl = document.getElementById('megCfgConfigFile');
+      const cfgEl = this.getEl('configFile');
       if (cfgEl) cfgEl.value = this.config.config_file;
-      const tablePathEl = document.getElementById('megTablePath');
+      const tablePathEl = this.getEl('tablePath');
       if (tablePathEl) tablePathEl.value = this.config.conversion_file;
 
       this.updateJsonDisplay();
@@ -370,12 +507,17 @@
         this.normalizeConfigPaths();
 
         // Update form fields
-        document.getElementById('megCfgRawDir').value = this.config.raw_dir || '';
-        document.getElementById('megCfgBidsDir').value = this.config.bids_dir || '';
-        document.getElementById('megCfgConversionFile').value = this.config.conversion_file || '';
-        document.getElementById('megCfgConfigFile').value = this.config.config_file || 'meg_bids_config.json';
-        document.getElementById('megCfgOverwrite').checked = parsed.overwrite || false;
-        const tablePath = document.getElementById('megTablePath');
+        const rawEl = this.getEl('rawDir');
+        if (rawEl) rawEl.value = this.config.raw_dir || '';
+        const bidsEl = this.getEl('bidsDir');
+        if (bidsEl) bidsEl.value = this.config.bids_dir || '';
+        const convEl = this.getEl('conversionFile');
+        if (convEl) convEl.value = this.config.conversion_file || '';
+        const cfgEl = this.getEl('configFile');
+        if (cfgEl) cfgEl.value = this.config.config_file || MEG_CONSTANTS.defaults.config_file;
+        const overwriteEl = this.getEl('overwrite');
+        if (overwriteEl) overwriteEl.checked = parsed.overwrite || false;
+        const tablePath = this.getEl('tablePath');
         if (tablePath) tablePath.value = this.config.conversion_file || '';
         this.renderTasks();
 
@@ -446,7 +588,7 @@
     },
 
     renderTasks: function() {
-      const container = document.getElementById('megTasksList');
+      const container = this.getEl('tasksList');
       if (!container) return;
 
       this.config.tasks = this.config.tasks || [];
@@ -473,7 +615,7 @@
 
       // Mark all as checking
       paths.forEach(p => {
-        const el = document.getElementById('val-' + p.id);
+        const el = document.getElementById(MEG_CONSTANTS.validationIds[p.id]);
         if (el) {
           el.className = 'path-validation checking';
           el.textContent = '⏳';
@@ -481,7 +623,7 @@
       });
 
       try {
-        const res = await fetch(Utils.apiPath('/meg-validate-paths'), {
+        const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.validatePaths), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ paths: paths })
@@ -489,7 +631,7 @@
         const data = await res.json();
 
         Object.entries(data.results || {}).forEach(([id, result]) => {
-          const el = document.getElementById('val-' + id);
+          const el = document.getElementById(MEG_CONSTANTS.validationIds[id]);
           if (el) {
             el.className = 'path-validation ' + (result.exists ? 'valid' : 'invalid');
             el.textContent = result.exists ? '✓' : '✗';
@@ -499,7 +641,7 @@
       } catch (e) {
         console.error('Validation failed:', e);
         paths.forEach(p => {
-          const el = document.getElementById('val-' + p.id);
+          const el = document.getElementById(MEG_CONSTANTS.validationIds[p.id]);
           if (el) {
             el.className = 'path-validation invalid';
             el.textContent = '✗';
@@ -544,19 +686,24 @@
       const savedProjectName = this.config.project_name;
       this.config = {
         project_name: savedProjectName,
-        raw_dir: 'raw/natmeg',
-        bids_dir: 'BIDS',
+        raw_dir: MEG_CONSTANTS.defaults.raw_dir,
+        bids_dir: MEG_CONSTANTS.defaults.bids_dir,
         tasks: [],
-        conversion_file: 'utils/meg_bids_conversion.tsv',
-        config_file: 'meg_bids_config.json',
+        conversion_file: MEG_CONSTANTS.defaults.conversion_file,
+        config_file: MEG_CONSTANTS.defaults.config_file,
         overwrite: false
       };
 
-      document.getElementById('megCfgRawDir').value = 'raw/natmeg';
-      document.getElementById('megCfgBidsDir').value = 'BIDS';
-      document.getElementById('megCfgConversionFile').value = 'utils/meg_bids_conversion.tsv';
-      document.getElementById('megCfgConfigFile').value = 'meg_bids_config.json';
-      document.getElementById('megCfgOverwrite').checked = false;
+      const rawEl = this.getEl('rawDir');
+      if (rawEl) rawEl.value = MEG_CONSTANTS.defaults.raw_dir;
+      const bidsEl = this.getEl('bidsDir');
+      if (bidsEl) bidsEl.value = MEG_CONSTANTS.defaults.bids_dir;
+      const convEl = this.getEl('conversionFile');
+      if (convEl) convEl.value = MEG_CONSTANTS.defaults.conversion_file;
+      const cfgEl = this.getEl('configFile');
+      if (cfgEl) cfgEl.value = MEG_CONSTANTS.defaults.config_file;
+      const overwriteEl = this.getEl('overwrite');
+      if (overwriteEl) overwriteEl.checked = false;
 
       this.renderTasks();
       this.updateJsonDisplay();
@@ -565,7 +712,7 @@
     },
 
     loadConfigFromFile: async function() {
-      const path = prompt('Enter config file path:', 'meg_bids_config.json');
+      const path = prompt('Enter config file path:', MEG_CONSTANTS.defaults.config_file);
       if (!path) return;
 
       try {
@@ -588,10 +735,10 @@
         overwrite: this.config.overwrite
       };
 
-      const configFileName = this.config.config_file || 'meg_bids_config.json';
+      const configFileName = this.config.config_file || MEG_CONSTANTS.defaults.config_file;
 
       try {
-        const res = await fetch(Utils.apiPath('/meg-save-config'), {
+        const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.saveConfig), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -622,7 +769,7 @@
 
       setupEventListeners: function() {
         // Search
-        const searchEl = document.getElementById('megSearchInput');
+        const searchEl = megBids.getEl('searchInput');
         if (searchEl) {
           searchEl.addEventListener('input', Utils.debounce(() => this.applyFilters(), 200));
         }
@@ -631,12 +778,12 @@
         this.setupHeaderFilterPickers();
 
         // Clear filters
-        const clearBtn = document.getElementById('megClearFiltersBtn');
+        const clearBtn = megBids.getEl('clearFiltersBtn');
         if (clearBtn) {
           clearBtn.addEventListener('click', () => this.clearFilters());
         }
 
-        const contextChecksEl = document.getElementById('megContextChecksChk');
+        const contextChecksEl = megBids.getEl('contextChecksChk');
         if (contextChecksEl) {
           contextChecksEl.addEventListener('change', () => {
             if (contextChecksEl.disabled) {
@@ -650,35 +797,35 @@
         }
 
         // Batch apply
-        const batchBtn = document.getElementById('megBatchApplyBtn');
+        const batchBtn = megBids.getEl('batchApplyBtn');
         if (batchBtn) {
           batchBtn.addEventListener('click', () => this.batchUpdateStatus());
         }
 
-        const batchTaskBtn = document.getElementById('megBatchApplyTaskBtn');
+        const batchTaskBtn = megBids.getEl('batchApplyTaskBtn');
         if (batchTaskBtn) {
           batchTaskBtn.addEventListener('click', () => this.batchUpdateTask());
         }
 
         // Analyze button
-        const analyzeBtn = document.getElementById('megAnalyzeBtn');
+        const analyzeBtn = megBids.getEl('analyzeBtn');
         if (analyzeBtn) {
           analyzeBtn.addEventListener('click', () => this.analyze());
         }
 
         // Save button
-        const saveBtn = document.getElementById('megSaveTableBtn');
+        const saveBtn = megBids.getEl('saveTableBtn');
         if (saveBtn) {
           saveBtn.addEventListener('click', () => this.saveTable());
         }
 
         // Sync editor table path back to config/json.
-        const tablePathInput = document.getElementById('megTablePath');
+        const tablePathInput = megBids.getEl('tablePath');
         if (tablePathInput) {
           tablePathInput.addEventListener('input', () => {
-            megBids.config.conversion_file = megBids.toProjectRelativePath(tablePathInput.value, 'utils/meg_bids_conversion.tsv');
+            megBids.config.conversion_file = megBids.toProjectRelativePath(tablePathInput.value, MEG_CONSTANTS.defaults.conversion_file);
             tablePathInput.value = megBids.config.conversion_file;
-            const cfgConv = document.getElementById('megCfgConversionFile');
+            const cfgConv = megBids.getEl('conversionFile');
             if (cfgConv) cfgConv.value = megBids.config.conversion_file;
             megBids.updateJsonDisplay();
             megBids.debouncedValidatePaths();
@@ -686,7 +833,7 @@
         }
 
         // Select all visible rows
-        const selectAll = document.getElementById('megSelectAll');
+        const selectAll = megBids.getEl('selectAll');
         if (selectAll) {
           selectAll.addEventListener('change', () => {
             const shouldSelect = selectAll.checked;
@@ -698,7 +845,7 @@
               }
             });
             // Update only the currently rendered DOM rows instead of re-rendering
-            const tbody = document.getElementById('megTableBody');
+            const tbody = megBids.getEl('tableBody');
             if (tbody) {
               tbody.querySelectorAll('input[data-select-row]').forEach(cb => {
                 cb.checked = shouldSelect;
@@ -711,12 +858,12 @@
         }
 
         // Sortable headers
-        document.querySelectorAll('#megConversionTable th[data-column]').forEach(th => {
+        document.querySelectorAll(MEG_CONSTANTS.selectors.sortableHeaders).forEach(th => {
           th.addEventListener('click', () => this.handleSortClick(th.dataset.column));
         });
 
         // Delegate row and checkbox events so we don't rebind on every scroll render
-        const tbody = document.getElementById('megTableBody');
+        const tbody = megBids.getEl('tableBody');
         if (tbody) {
           tbody.addEventListener('click', (e) => {
             if (e.target.type === 'checkbox') return;
@@ -740,39 +887,39 @@
         }
 
         // Modal buttons
-        const modalClose = document.getElementById('megModalClose');
+        const modalClose = megBids.getEl('modalClose');
         if (modalClose) {
           modalClose.addEventListener('click', () => this.closeModal());
         }
 
-        const modalCancel = document.getElementById('megModalCancel');
+        const modalCancel = megBids.getEl('modalCancel');
         if (modalCancel) {
           modalCancel.addEventListener('click', () => this.closeModal());
         }
 
-        const modalSave = document.getElementById('megModalSave');
+        const modalSave = megBids.getEl('modalSave');
         if (modalSave) {
           modalSave.addEventListener('click', () => this.saveModal());
         }
 
-        const modalPrev = document.getElementById('megModalPrev');
+        const modalPrev = megBids.getEl('modalPrev');
         if (modalPrev) {
           modalPrev.addEventListener('click', () => this.navigateModal(-1));
         }
 
-        const modalNext = document.getElementById('megModalNext');
+        const modalNext = megBids.getEl('modalNext');
         if (modalNext) {
           modalNext.addEventListener('click', () => this.navigateModal(1));
         }
 
         // Advanced section toggle
-        const advancedToggle = document.getElementById('megAdvancedToggle');
+        const advancedToggle = megBids.getEl('advancedToggle');
         if (advancedToggle) {
           advancedToggle.addEventListener('click', () => this.toggleAdvancedSection());
         }
 
         // Modal input change handlers for live preview
-        const modalInputs = document.querySelectorAll('#megEditModal input[data-bids-field], #megEditModal select[data-bids-field]');
+        const modalInputs = document.querySelectorAll(MEG_CONSTANTS.selectors.modalBidsInputs);
         modalInputs.forEach(input => {
           input.addEventListener('input', () => this.updateLivePreview());
           input.addEventListener('change', () => this.updateLivePreview());
@@ -782,7 +929,7 @@
       },
 
       setupHelpTooltips: function() {
-        const tooltip = document.getElementById('megHelpTooltip');
+        const tooltip = megBids.getEl('helpTooltip');
         if (!tooltip) return;
 
         const showTooltip = (target) => {
@@ -868,7 +1015,7 @@
       },
 
       updateContextChecksAvailability: function() {
-        const contextChecksEl = document.getElementById('megContextChecksChk');
+        const contextChecksEl = megBids.getEl('contextChecksChk');
         if (!contextChecksEl) return;
 
         const hasCheckRows = megBids.tableData.some(row => String(row?.status || '').toLowerCase() === 'check');
@@ -884,7 +1031,7 @@
       },
 
       setupVirtualScroll: function() {
-        const container = document.getElementById('megTableContainer');
+        const container = megBids.getEl('tableContainer');
         if (!container) return;
 
         // Calculate container height and visible rows
@@ -913,11 +1060,11 @@
 
       // Run analysis to generate conversion table
       analyze: async function() {
-        const btn = document.getElementById('megAnalyzeBtn');
+        const btn = megBids.getEl('analyzeBtn');
         if (btn) btn.disabled = true;
         megBids.setStatus('megTableStatus', 'Analyzing raw data...');
 
-        const overwriteAnalysis = document.getElementById('megAnalyzeOverwriteCheck')?.checked || false;
+        const overwriteAnalysis = megBids.getEl('analyzeOverwriteCheck')?.checked || false;
 
         try {
           const serverConfig = {
@@ -931,7 +1078,7 @@
             overwrite_conversion: overwriteAnalysis
           };
 
-          const res = await fetch(Utils.apiPath('/meg-run-analysis'), {
+          const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.runAnalysis), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ config: serverConfig, force_scan: overwriteAnalysis })
@@ -949,10 +1096,10 @@
           megBids.tableSearchIndex = megBids.tableData.map(row => this.buildRowSearchText(row));
           megBids.tableFile = megBids.toProjectRelativePath(data.file, megBids.config.conversion_file);
           if (data.file) {
-            megBids.config.conversion_file = megBids.toProjectRelativePath(data.file, 'utils/meg_bids_conversion.tsv');
-            const pathInput = document.getElementById('megTablePath');
+            megBids.config.conversion_file = megBids.toProjectRelativePath(data.file, MEG_CONSTANTS.defaults.conversion_file);
+            const pathInput = megBids.getEl('tablePath');
             if (pathInput) pathInput.value = megBids.config.conversion_file;
-            const cfgConv = document.getElementById('megCfgConversionFile');
+            const cfgConv = megBids.getEl('conversionFile');
             if (cfgConv) cfgConv.value = megBids.config.conversion_file;
             megBids.updateJsonDisplay();
           }
@@ -962,10 +1109,10 @@
           this.populateFilters();
           this.applyFilters();
 
-          const container = document.getElementById('megTableContainer');
+          const container = megBids.getEl('tableContainer');
           if (container) container.scrollTop = 0;
 
-          const saveBtn = document.getElementById('megSaveTableBtn');
+          const saveBtn = megBids.getEl('saveTableBtn');
           if (saveBtn) saveBtn.disabled = true;
 
           megBids.setStatus('megTableStatus', `Found ${data.row_count} files. Click a row to edit.`);
@@ -982,11 +1129,11 @@
       tryAutoLoadConversionTable: async function() {
         if (!megBids.config || !megBids.config.conversion_file) return;
 
-        const conversionPath = megBids.toProjectRelativePath(megBids.config.conversion_file, 'utils/meg_bids_conversion.tsv');
+        const conversionPath = megBids.toProjectRelativePath(megBids.config.conversion_file, MEG_CONSTANTS.defaults.conversion_file);
         if (!conversionPath) return;
 
         try {
-          const checkRes = await fetch(Utils.apiPath('/meg-validate-paths'), {
+          const checkRes = await fetch(Utils.apiPath(MEG_CONSTANTS.api.validatePaths), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ paths: [{ id: 'conv', path: conversionPath }] })
@@ -1007,7 +1154,7 @@
             overwrite: megBids.config.overwrite
           };
 
-          const tableRes = await fetch(Utils.apiPath('/meg-load-conversion-table'), {
+          const tableRes = await fetch(Utils.apiPath(MEG_CONSTANTS.api.loadConversionTable), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ config: serverConfig })
@@ -1020,14 +1167,14 @@
           megBids.tableSearchIndex = megBids.tableData.map(row => this.buildRowSearchText(row));
           megBids.tableFile = megBids.toProjectRelativePath(tableData.file, conversionPath);
           if (tableData.file) {
-            megBids.config.conversion_file = megBids.toProjectRelativePath(tableData.file, 'utils/meg_bids_conversion.tsv');
+            megBids.config.conversion_file = megBids.toProjectRelativePath(tableData.file, MEG_CONSTANTS.defaults.conversion_file);
           }
 
-          const pathInput = document.getElementById('megTablePath');
+          const pathInput = megBids.getEl('tablePath');
           if (pathInput) pathInput.value = megBids.config.conversion_file;
-          const cfgConv = document.getElementById('megCfgConversionFile');
+          const cfgConv = megBids.getEl('conversionFile');
           if (cfgConv) cfgConv.value = megBids.config.conversion_file;
-          const saveBtn = document.getElementById('megSaveTableBtn');
+          const saveBtn = megBids.getEl('saveTableBtn');
           if (saveBtn) saveBtn.disabled = true;
 
           megBids.selectedRows.clear();
@@ -1043,7 +1190,7 @@
       },
 
       renderStatusLegend: function() {
-        const legend = document.getElementById('megStatusLegend');
+        const legend = megBids.getEl('statusLegend');
         if (!legend) return;
 
         if (!Array.isArray(megBids.tableData) || megBids.tableData.length === 0) {
@@ -1156,7 +1303,7 @@
 
       // Apply filters and update visible rows
       applyFilters: function() {
-        const searchEl = document.getElementById('megSearchInput');
+        const searchEl = megBids.getEl('searchInput');
 
         const search = (searchEl?.value || '').toLowerCase().trim();
         this.updateContextChecksAvailability();
@@ -1270,12 +1417,12 @@
         }
 
         // Update header UI
-        document.querySelectorAll('#megConversionTable th').forEach(th => {
+        document.querySelectorAll(MEG_CONSTANTS.selectors.allHeaders).forEach(th => {
           th.classList.remove('sort-asc', 'sort-desc');
         });
 
         if (megBids.sort.column && megBids.sort.direction !== 'none') {
-          const th = document.querySelector(`#megConversionTable th[data-column="${column}"]`);
+          const th = document.querySelector(`${MEG_CONSTANTS.selectors.sortableHeaders.replace('[data-column]', '')}[data-column="${column}"]`);
           if (th) th.classList.add('sort-' + megBids.sort.direction);
         }
 
@@ -1284,7 +1431,7 @@
 
       // Render filter pills
       renderFilterPills: function() {
-        const container = document.getElementById('megFilterPills');
+        const container = megBids.getEl('filterPills');
         if (!container) return;
 
         const pills = [];
@@ -1360,10 +1507,10 @@
         megBids.filters.rawNames.clear();
         megBids.filters.contextChecks = false;
 
-        const contextChecksEl = document.getElementById('megContextChecksChk');
+        const contextChecksEl = megBids.getEl('contextChecksChk');
         if (contextChecksEl) contextChecksEl.checked = false;
 
-        const searchEl = document.getElementById('megSearchInput');
+        const searchEl = megBids.getEl('searchInput');
         if (searchEl) searchEl.value = '';
 
         ['subjects', 'tasks', 'statuses', 'sessions', 'runs', 'datatypes', 'rawNames'].forEach(type => {
@@ -1402,10 +1549,10 @@
       // Render visible rows for virtual scrolling
       renderVisibleRows: function(force) {
         force = !!force;
-        const container = document.getElementById('megTableContainer');
-        const table = document.getElementById('megConversionTable');
-        const tbody = document.getElementById('megTableBody');
-        const empty = document.getElementById('megTableEmpty');
+        const container = megBids.getEl('tableContainer');
+        const table = megBids.getEl('conversionTable');
+        const tbody = megBids.getEl('tableBody');
+        const empty = megBids.getEl('tableEmpty');
 
         if (!container || !tbody) return;
 
@@ -1461,7 +1608,7 @@
         const totalHeight = megBids.modal.visibleRowIndices.length * megBids.scroll.rowHeight;
         const topSpacer = startIdx * megBids.scroll.rowHeight;
         const bottomSpacer = totalHeight - (endIdx * megBids.scroll.rowHeight);
-        const colCount = document.querySelectorAll('#megConversionTable thead th').length || 8;
+        const colCount = document.querySelectorAll(MEG_CONSTANTS.selectors.tableHeaderCells).length || 8;
 
         tbody.innerHTML = `
           <tr style="height: ${topSpacer}px;"><td colspan="${colCount}"></td></tr>
@@ -1472,7 +1619,7 @@
         this.updateSelectAllState();
 
         // Update row count display
-        const countEl = document.getElementById('megRowCount');
+        const countEl = megBids.getEl('rowCount');
         if (countEl) {
           countEl.textContent = `${megBids.modal.visibleRowIndices.length} of ${megBids.tableData.length} rows`;
         }
@@ -1507,36 +1654,36 @@
 
         // Update modal header
         const visibleIdx = megBids.modal.visibleRowIndices.indexOf(dataIdx);
-        const headerEl = document.getElementById('megModalHeader');
+        const headerEl = megBids.getEl('modalHeader');
         if (headerEl) {
           headerEl.textContent = `Row ${visibleIdx + 1} of ${megBids.modal.visibleRowIndices.length}`;
         }
 
         // Populate form fields
         const parsedBids = this.parseBidsName(row.bids_name || '');
-        this.setModalValue('megEditSubject', row.participant_to);
-        this.setModalValue('megEditSession', row.session_to);
-        this.setModalValue('megEditTask', row.task);
-        this.setModalValue('megEditAcquisition', row.acquisition);
-        this.setModalValue('megEditRun', row.run);
-        this.setModalValue('megEditProcessing', row.processing);
-        this.setModalValue('megEditSplit', row.split);
-        this.setModalValue('megEditRecording', row.recording || parsedBids.recording);
-        this.setModalValue('megEditSpace', row.space || parsedBids.space);
-        this.setModalValue('megEditDescription', row.description);
-        this.setModalValue('megEditTrackingSystem', row.tracking_system || parsedBids.tracking_system);
-        this.setModalValue('megEditSuffix', row.suffix || parsedBids.suffix);
-        this.setModalValue('megEditExtension', row.extension || parsedBids.extension);
-        this.setModalValue('megEditDatatype', row.datatype);
-        this.setModalValue('megEditStatus', row.status);
+        this.setModalValue('subject', row.participant_to);
+        this.setModalValue('session', row.session_to);
+        this.setModalValue('task', row.task);
+        this.setModalValue('acquisition', row.acquisition);
+        this.setModalValue('run', row.run);
+        this.setModalValue('processing', row.processing);
+        this.setModalValue('split', row.split);
+        this.setModalValue('recording', row.recording || parsedBids.recording);
+        this.setModalValue('space', row.space || parsedBids.space);
+        this.setModalValue('description', row.description);
+        this.setModalValue('trackingSystem', row.tracking_system || parsedBids.tracking_system);
+        this.setModalValue('suffix', row.suffix || parsedBids.suffix);
+        this.setModalValue('extension', row.extension || parsedBids.extension);
+        this.setModalValue('datatype', row.datatype);
+        this.setModalValue('status', row.status);
 
         // Update read-only source info
-        const sourceEl = document.getElementById('megEditSource');
+        const sourceEl = megBids.getEl('editSource');
         if (sourceEl) {
           sourceEl.textContent = `${row.raw_path || ''}/${row.raw_name || ''}`;
         }
 
-        const convertedEl = document.getElementById('megEditConverted');
+        const convertedEl = megBids.getEl('editConverted');
         if (convertedEl) {
           const isProcessed = String(row.status || '').toLowerCase() === 'processed';
           const convertedPath = (row.bids_path && row.bids_name) ? `${row.bids_path}/${row.bids_name}` : '';
@@ -1548,19 +1695,19 @@
         this.updateLivePreview();
 
         // Reset advanced section
-        const advancedContent = document.getElementById('megAdvancedContent');
+        const advancedContent = megBids.getEl('advancedContent');
         if (advancedContent) advancedContent.style.display = 'none';
 
         // Show modal
-        const modal = document.getElementById('megEditModal');
+        const modal = megBids.getEl('editModal');
         if (modal) modal.style.display = 'block';
 
         // Update nav buttons
         this.updateModalNavButtons();
       },
 
-      setModalValue: function(id, value) {
-        const el = document.getElementById(id);
+      setModalValue: function(fieldKey, value) {
+        const el = megBids.getModalEl(fieldKey);
         if (el) el.value = value || '';
       },
 
@@ -1597,19 +1744,19 @@
       getModalFilename: function() {
         const parts = [];
 
-        const subject = document.getElementById('megEditSubject')?.value;
-        const session = document.getElementById('megEditSession')?.value;
-        const task = document.getElementById('megEditTask')?.value;
-        const acquisition = document.getElementById('megEditAcquisition')?.value;
-        const run = document.getElementById('megEditRun')?.value;
-        const processing = document.getElementById('megEditProcessing')?.value;
-        const split = document.getElementById('megEditSplit')?.value;
-        const recording = document.getElementById('megEditRecording')?.value;
-        const space = document.getElementById('megEditSpace')?.value;
-        const description = document.getElementById('megEditDescription')?.value;
-        const trackingSystem = document.getElementById('megEditTrackingSystem')?.value;
-        const suffix = document.getElementById('megEditSuffix')?.value;
-        const extension = document.getElementById('megEditExtension')?.value;
+        const subject = megBids.getModalValue('subject');
+        const session = megBids.getModalValue('session');
+        const task = megBids.getModalValue('task');
+        const acquisition = megBids.getModalValue('acquisition');
+        const run = megBids.getModalValue('run');
+        const processing = megBids.getModalValue('processing');
+        const split = megBids.getModalValue('split');
+        const recording = megBids.getModalValue('recording');
+        const space = megBids.getModalValue('space');
+        const description = megBids.getModalValue('description');
+        const trackingSystem = megBids.getModalValue('trackingSystem');
+        const suffix = megBids.getModalValue('suffix');
+        const extension = megBids.getModalValue('extension');
 
         if (subject) parts.push(`sub-${subject}`);
         if (session) parts.push(`ses-${session}`);
@@ -1636,12 +1783,12 @@
         const previewEl = document.getElementById('megFilenamePreview');
         if (previewEl) previewEl.textContent = filename || 'No filename generated yet';
 
-        const convertedEl = document.getElementById('megEditConverted');
+        const convertedEl = megBids.getEl('editConverted');
         if (convertedEl) {
           const dataIdx = megBids.modal.currentRowIndex;
           const row = dataIdx === null ? null : megBids.tableData[dataIdx];
           const bidsPath = row?.bids_path || '';
-          const status = String(document.getElementById('megEditStatus')?.value || row?.status || '').toLowerCase();
+          const status = String(megBids.getModalValue('status') || row?.status || '').toLowerCase();
           const convertedPath = (bidsPath && filename) ? `${bidsPath}/${filename}` : '';
           convertedEl.textContent = (status === 'processed' && convertedPath) ? convertedPath : 'Not converted yet';
           convertedEl.style.color = (status === 'processed' && convertedPath) ? '#8cb4ff' : '#888';
@@ -1650,8 +1797,8 @@
 
       // Toggle advanced section
       toggleAdvancedSection: function() {
-        const content = document.getElementById('megAdvancedContent');
-        const toggle = document.getElementById('megAdvancedToggle');
+        const content = megBids.getEl('advancedContent');
+        const toggle = megBids.getEl('advancedToggle');
         if (!content || !toggle) return;
 
         const isVisible = content.style.display !== 'none';
@@ -1672,8 +1819,8 @@
 
       updateModalNavButtons: function() {
         const currentVisibleIdx = megBids.modal.visibleRowIndices.indexOf(megBids.modal.currentRowIndex);
-        const prevBtn = document.getElementById('megModalPrev');
-        const nextBtn = document.getElementById('megModalNext');
+        const prevBtn = megBids.getEl('modalPrev');
+        const nextBtn = megBids.getEl('modalNext');
 
         if (prevBtn) prevBtn.disabled = currentVisibleIdx <= 0;
         if (nextBtn) nextBtn.disabled = currentVisibleIdx >= megBids.modal.visibleRowIndices.length - 1;
@@ -1687,21 +1834,21 @@
         const row = megBids.tableData[dataIdx];
 
         // Update row with modal values
-        row.participant_to = document.getElementById('megEditSubject')?.value || '';
-        row.session_to = document.getElementById('megEditSession')?.value || '';
-        row.task = document.getElementById('megEditTask')?.value || '';
-        row.acquisition = document.getElementById('megEditAcquisition')?.value || '';
-        row.run = document.getElementById('megEditRun')?.value || '';
-        row.processing = document.getElementById('megEditProcessing')?.value || '';
-        row.split = document.getElementById('megEditSplit')?.value || '';
-        row.recording = document.getElementById('megEditRecording')?.value || '';
-        row.space = document.getElementById('megEditSpace')?.value || '';
-        row.description = document.getElementById('megEditDescription')?.value || '';
-        row.tracking_system = document.getElementById('megEditTrackingSystem')?.value || '';
-        row.suffix = document.getElementById('megEditSuffix')?.value || '';
-        row.extension = document.getElementById('megEditExtension')?.value || '';
-        row.datatype = document.getElementById('megEditDatatype')?.value || '';
-        row.status = document.getElementById('megEditStatus')?.value || '';
+        row.participant_to = megBids.getModalValue('subject');
+        row.session_to = megBids.getModalValue('session');
+        row.task = megBids.getModalValue('task');
+        row.acquisition = megBids.getModalValue('acquisition');
+        row.run = megBids.getModalValue('run');
+        row.processing = megBids.getModalValue('processing');
+        row.split = megBids.getModalValue('split');
+        row.recording = megBids.getModalValue('recording');
+        row.space = megBids.getModalValue('space');
+        row.description = megBids.getModalValue('description');
+        row.tracking_system = megBids.getModalValue('trackingSystem');
+        row.suffix = megBids.getModalValue('suffix');
+        row.extension = megBids.getModalValue('extension');
+        row.datatype = megBids.getModalValue('datatype');
+        row.status = megBids.getModalValue('status');
 
         const rebuiltName = this.getModalFilename();
         if (rebuiltName) row.bids_name = rebuiltName;
@@ -1712,7 +1859,7 @@
         megBids.modifiedRows.add(dataIdx);
 
         // Enable save button
-        const saveBtn = document.getElementById('megSaveTableBtn');
+        const saveBtn = megBids.getEl('saveTableBtn');
         if (saveBtn) saveBtn.disabled = false;
         this.updateLivePreview();
         this.populateFilters();
@@ -1725,14 +1872,14 @@
         megBids.modal.currentRowIndex = null;
         megBids.modal.tempData = null;
 
-        const modal = document.getElementById('megEditModal');
+        const modal = megBids.getEl('editModal');
         if (modal) modal.style.display = 'none';
       },
 
       // Update batch actions visibility
       updateBatchActions: function() {
-        const batchDiv = document.getElementById('megBatchActions');
-        const countEl = document.getElementById('megSelectedCount');
+        const batchDiv = megBids.getEl('batchActions');
+        const countEl = megBids.getEl('selectedCount');
 
         const count = megBids.selectedRows.size;
 
@@ -1741,7 +1888,7 @@
       },
 
       updateSelectAllState: function() {
-        const selectAll = document.getElementById('megSelectAll');
+        const selectAll = megBids.getEl('selectAll');
         if (!selectAll) return;
 
         const visible = megBids.modal.visibleRowIndices;
@@ -1758,7 +1905,7 @@
 
       // Batch update status for selected rows
       batchUpdateStatus: function() {
-        const statusEl = document.getElementById('megBatchStatus');
+        const statusEl = megBids.getEl('batchStatus');
         if (!statusEl) return;
 
         const newStatus = statusEl.value;
@@ -1775,7 +1922,7 @@
         this.updateBatchActions();
 
         // Enable save button
-        const saveBtn = document.getElementById('megSaveTableBtn');
+        const saveBtn = megBids.getEl('saveTableBtn');
         if (saveBtn) saveBtn.disabled = false;
 
         this.populateFilters();
@@ -1784,7 +1931,7 @@
 
       // Batch rename task for selected rows
       batchUpdateTask: function() {
-        const taskEl = document.getElementById('megBatchTask');
+        const taskEl = megBids.getEl('batchTask');
         if (!taskEl) return;
 
         const newTask = (taskEl.value || '').trim();
@@ -1802,7 +1949,7 @@
         this.updateBatchActions();
 
         // Enable save button
-        const saveBtn = document.getElementById('megSaveTableBtn');
+        const saveBtn = megBids.getEl('saveTableBtn');
         if (saveBtn) saveBtn.disabled = false;
 
         this.populateFilters();
@@ -1813,11 +1960,11 @@
       saveTable: async function() {
         if (!megBids.tableFile) return;
 
-        const btn = document.getElementById('megSaveTableBtn');
+        const btn = megBids.getEl('saveTableBtn');
         if (btn) btn.disabled = true;
 
         try {
-          const res = await fetch(Utils.apiPath('/meg-save-conversion-table'), {
+          const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.saveConversionTable), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1836,10 +1983,10 @@
             megBids.modifiedRows.clear();
             if (data.path) {
               megBids.tableFile = megBids.toProjectRelativePath(data.path, megBids.config.conversion_file);
-              megBids.config.conversion_file = megBids.toProjectRelativePath(data.path, 'utils/meg_bids_conversion.tsv');
-              const pathInput = document.getElementById('megTablePath');
+              megBids.config.conversion_file = megBids.toProjectRelativePath(data.path, MEG_CONSTANTS.defaults.conversion_file);
+              const pathInput = megBids.getEl('tablePath');
               if (pathInput) pathInput.value = megBids.config.conversion_file;
-              const cfgConv = document.getElementById('megCfgConversionFile');
+              const cfgConv = megBids.getEl('conversionFile');
               if (cfgConv) cfgConv.value = megBids.config.conversion_file;
               megBids.updateJsonDisplay();
             }
@@ -1935,7 +2082,7 @@
               config_file: megBids.config.config_file,
               overwrite: megBids.config.overwrite
             };
-            const tableRes = await fetch(Utils.apiPath('/meg-load-conversion-table'), {
+            const tableRes = await fetch(Utils.apiPath(MEG_CONSTANTS.api.loadConversionTable), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ config: serverConfig })
@@ -1948,10 +2095,10 @@
             megBids.tableSearchIndex = megBids.tableData.map(row => this.buildRowSearchText(row));
             if (tableData.file) {
               megBids.tableFile = megBids.toProjectRelativePath(tableData.file, megBids.config.conversion_file);
-              megBids.config.conversion_file = megBids.toProjectRelativePath(tableData.file, 'utils/meg_bids_conversion.tsv');
-              const pathInput = document.getElementById('megTablePath');
+              megBids.config.conversion_file = megBids.toProjectRelativePath(tableData.file, MEG_CONSTANTS.defaults.conversion_file);
+              const pathInput = megBids.getEl('tablePath');
               if (pathInput) pathInput.value = megBids.config.conversion_file;
-              const cfgConv = document.getElementById('megCfgConversionFile');
+              const cfgConv = megBids.getEl('conversionFile');
               if (cfgConv) cfgConv.value = megBids.config.conversion_file;
               megBids.updateJsonDisplay();
             }
@@ -1979,7 +2126,7 @@
             overwrite: megBids.config.overwrite
           };
 
-          const res = await fetch(Utils.apiPath('/meg-run-bidsify'), {
+          const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.runBidsify), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ config: serverConfig, verbose: verbose })
@@ -2003,7 +2150,7 @@
           const writeWeight = 88;
 
           while (true) {
-            const progressRes = await fetch(Utils.apiPath(`/meg-bidsify-progress?job_id=${encodeURIComponent(jobId)}`));
+            const progressRes = await fetch(Utils.apiPath(`${MEG_CONSTANTS.api.bidsifyProgress}?job_id=${encodeURIComponent(jobId)}`));
             const progressData = await progressRes.json();
 
             if (progressData.error || !progressData.job) {
@@ -2098,7 +2245,7 @@
             overwrite: megBids.config.overwrite
           };
 
-          const res = await fetch(Utils.apiPath('/meg-run-report'), {
+          const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.runReport), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ config: serverConfig })
@@ -2140,7 +2287,7 @@
             overwrite: megBids.config.overwrite
           };
 
-          const res = await fetch(Utils.apiPath('/meg-get-report'), {
+          const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.getReport), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ config: serverConfig })

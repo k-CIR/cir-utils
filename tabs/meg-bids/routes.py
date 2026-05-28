@@ -17,6 +17,11 @@ from pathlib import Path
 # Sibling modules live in the same directory
 _TAB_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _TAB_DIR)
+_REPO_ROOT = os.path.realpath(os.path.join(_TAB_DIR, '..', '..'))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import constants as CONSTS
 
 # Import from refactored bidsify package
 from bidsify.simple import load_minimal_config, get_default_config, bidsify_simple
@@ -29,10 +34,10 @@ from bidsify.utils import setLogPath
 
 # ── Tab metadata ──────────────────────────────────────────────────────────────
 TAB_METADATA = {
-    "id": "meg-bids",
-    "label": "MEG BIDS",
-    "order": 2,
-    "requires_path": "raw/natmeg",
+    "id": CONSTS.TAB_ID_MEG,
+    "label": CONSTS.TAB_LABEL_MEG,
+    "order": CONSTS.TAB_ORDER_MEG,
+    "requires_path": CONSTS.TAB_REQUIRES_PATH_MEG,
 }
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -45,10 +50,10 @@ def _detect_project_root(script_dir):
     return os.path.realpath(os.path.join(script_dir, "..", "..", ".."))
 
 _PROJECT_ROOT = _detect_project_root(_TAB_DIR)
-_RAW_MEG_DIR = os.path.join(_PROJECT_ROOT, "raw", "natmeg")
-_LEGACY_RAW_MEG_DIR = os.path.join(_PROJECT_ROOT, "raw", "meg")
-_LOGS_DIR = os.path.join(_PROJECT_ROOT, "logs")
-_DEFAULT_CONFIG_FILE = "meg_bids_config.json"
+_RAW_MEG_DIR = os.path.join(_PROJECT_ROOT, CONSTS.RAW_MEG_SUBDIR)
+_LEGACY_RAW_MEG_DIR = os.path.join(_PROJECT_ROOT, CONSTS.RAW_MEG_LEGACY_SUBDIR)
+_LOGS_DIR = os.path.join(_PROJECT_ROOT, CONSTS.DEFAULT_LOG_DIR)
+_DEFAULT_CONFIG_FILE = CONSTS.MEG_DEFAULT_CONFIG_FILE
 _MEG_BIDS_JOBS = {}
 _MEG_BIDS_JOBS_LOCK = threading.Lock()
 
@@ -161,18 +166,18 @@ def _build_runtime_config(client_config=None):
             'Name': os.path.basename(_PROJECT_ROOT),
             'Root': _PROJECT_ROOT,
             'Raw': _detect_raw_meg_dir(),
-            'BIDS': _resolve_project_path('BIDS'),
+            'BIDS': _resolve_project_path(CONSTS.DEFAULT_BIDS_DIR),
             'Tasks': [],
-            'Conversion_file': _resolve_project_path('utils/meg_bids_conversion.tsv'),
+            'Conversion_file': _resolve_project_path(CONSTS.MEG_DEFAULT_CONVERSION_FILE),
             'config_file': _DEFAULT_CONFIG_FILE,
             'overwrite': False,
         })
         return config, None
 
     name = client_config.get('project_name') or os.path.basename(_PROJECT_ROOT)
-    raw_dir = client_config.get('raw_dir', 'raw/natmeg')
-    bids_dir = client_config.get('bids_dir', 'BIDS')
-    conversion_file = client_config.get('conversion_file', 'utils/meg_bids_conversion.tsv')
+    raw_dir = client_config.get('raw_dir', CONSTS.RAW_MEG_SUBDIR)
+    bids_dir = client_config.get('bids_dir', CONSTS.DEFAULT_BIDS_DIR)
+    conversion_file = client_config.get('conversion_file', CONSTS.MEG_DEFAULT_CONVERSION_FILE)
     config_file = client_config.get('config_file', _DEFAULT_CONFIG_FILE)
 
     raw_path = _resolve_project_path(raw_dir)
@@ -577,19 +582,19 @@ def _handle_save_config(h, body):
 
 def register(get_routes, post_routes):
     """Populate get_routes and post_routes with this tab's endpoints."""
-    get_routes["/meg-get-config"] = _handle_get_config
-    get_routes["/meg-get-project-root"] = _handle_get_project_root
-    get_routes["/meg-load-config"] = _handle_load_config
-    get_routes["/meg-get-conversion-table"] = _handle_get_conversion_table
-    get_routes["/meg-bidsify-progress"] = _handle_bidsify_progress
-    get_routes["/meg-tab.js"] = _handle_get_static_js
-    get_routes["/meg-tab.css"] = _handle_get_static_css
+    get_routes[CONSTS.MEG_API_GET_CONFIG] = _handle_get_config
+    get_routes[CONSTS.MEG_API_GET_PROJECT_ROOT] = _handle_get_project_root
+    get_routes[CONSTS.MEG_API_LOAD_CONFIG] = _handle_load_config
+    get_routes[CONSTS.MEG_API_GET_CONVERSION_TABLE] = _handle_get_conversion_table
+    get_routes[CONSTS.MEG_API_BIDSIFY_PROGRESS] = _handle_bidsify_progress
+    get_routes[CONSTS.MEG_ASSET_JS] = _handle_get_static_js
+    get_routes[CONSTS.MEG_ASSET_CSS] = _handle_get_static_css
 
-    post_routes["/meg-save-conversion-table"] = _handle_save_conversion_table
-    post_routes["/meg-load-conversion-table"] = _handle_load_conversion_table
-    post_routes["/meg-save-config"] = _handle_save_config
-    post_routes["/meg-run-analysis"] = _handle_run_analysis
-    post_routes["/meg-run-bidsify"] = _handle_run_bidsify
-    post_routes["/meg-run-report"] = _handle_run_report
-    post_routes["/meg-get-report"] = _handle_get_report
-    post_routes["/meg-validate-paths"] = _handle_validate_paths
+    post_routes[CONSTS.MEG_API_SAVE_CONVERSION_TABLE] = _handle_save_conversion_table
+    post_routes[CONSTS.MEG_API_LOAD_CONVERSION_TABLE] = _handle_load_conversion_table
+    post_routes[CONSTS.MEG_API_SAVE_CONFIG] = _handle_save_config
+    post_routes[CONSTS.MEG_API_RUN_ANALYSIS] = _handle_run_analysis
+    post_routes[CONSTS.MEG_API_RUN_BIDSIFY] = _handle_run_bidsify
+    post_routes[CONSTS.MEG_API_RUN_REPORT] = _handle_run_report
+    post_routes[CONSTS.MEG_API_GET_REPORT] = _handle_get_report
+    post_routes[CONSTS.MEG_API_VALIDATE_PATHS] = _handle_validate_paths
