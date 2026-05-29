@@ -25,7 +25,7 @@ import constants as CONSTS
 
 # Import from refactored bidsify package
 from bidsify.simple import load_minimal_config, get_default_config, bidsify_simple
-from bidsify.conversion_table import load_conversion_table, update_conversion_table
+from bidsify.conversion_table import load_conversion_table, update_conversion_table, _normalize_table
 from bidsify.pipeline import bidsify, update_bids_report, run_qa_analysis
 from bidsify.templates import create_dataset_description, create_proc_description
 from bidsify.sidecars import update_sidecars
@@ -338,6 +338,7 @@ def _handle_save_conversion_table(h, body):
 
     try:
         df = pd.DataFrame(table_data)
+        df = _normalize_table(df)
         df.to_csv(full_path, sep='\t', index=False)
         h._send_json({"ok": True, "path": file_path, "rows": len(table_data)})
     except Exception as e:

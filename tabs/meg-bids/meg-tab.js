@@ -26,6 +26,17 @@
     apiPath: function(path) {
       const token = Utils.getToken();
       return path + (token ? (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token) : '');
+    },
+
+    formatBytes: function(value) {
+      const bytes = Number(value);
+      if (!Number.isFinite(bytes) || bytes < 0) return 'Unknown';
+      if (bytes === 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      const num = bytes / Math.pow(1024, exp);
+      const precision = exp === 0 ? 0 : 1;
+      return `${num.toFixed(precision)} ${units[exp]}`;
     }
   };
 
@@ -94,6 +105,7 @@
       advancedContent: 'megAdvancedContent',
       helpTooltip: 'megHelpTooltip',
       editSource: 'megEditSource',
+      editSourceSize: 'megEditSourceSize',
       editConverted: 'megEditConverted',
       batchActions: 'megBatchActions',
       selectedCount: 'megSelectedCount',
@@ -111,6 +123,7 @@
       recording: 'megEditRecording',
       space: 'megEditSpace',
       description: 'megEditDescription',
+      notes: 'megEditNotes',
       trackingSystem: 'megEditTrackingSystem',
       suffix: 'megEditSuffix',
       extension: 'megEditExtension',
@@ -127,7 +140,7 @@
       sortableHeaders: '#megConversionTable th[data-column]',
       allHeaders: '#megConversionTable th',
       tableHeaderCells: '#megConversionTable thead th',
-      modalBidsInputs: '#megEditModal input[data-bids-field], #megEditModal select[data-bids-field]',
+      modalBidsInputs: '#megEditModal input[data-bids-field], #megEditModal select[data-bids-field], #megEditModal textarea[data-bids-field]',
       progressFill: '#megProgressBar > div'
     },
     statusLegend: {
@@ -154,6 +167,7 @@
     space: "Coordinate space for anatomical/sensor files",
     recording: "Recording name",
     description: "Description for derivative data",
+    notes: "Optional free-text notes stored in metadata",
     tracking_system: "Tracking system entity",
     status: "Conversion status: run, check, processed, skip, missing"
   };
@@ -1671,6 +1685,7 @@
         this.setModalValue('recording', row.recording || parsedBids.recording);
         this.setModalValue('space', row.space || parsedBids.space);
         this.setModalValue('description', row.description);
+        this.setModalValue('notes', this.getRowNotes(row));
         this.setModalValue('trackingSystem', row.tracking_system || parsedBids.tracking_system);
         this.setModalValue('suffix', row.suffix || parsedBids.suffix);
         this.setModalValue('extension', row.extension || parsedBids.extension);
@@ -1681,6 +1696,11 @@
         const sourceEl = megBids.getEl('editSource');
         if (sourceEl) {
           sourceEl.textContent = `${row.raw_path || ''}/${row.raw_name || ''}`;
+        }
+
+        const sourceSizeEl = megBids.getEl('editSourceSize');
+        if (sourceSizeEl) {
+          sourceSizeEl.textContent = Utils.formatBytes(row.size);
         }
 
         const convertedEl = megBids.getEl('editConverted');
@@ -1739,6 +1759,31 @@
         });
 
         return parsed;
+      },
+
+      parseRowMetadata: function(row) {
+        if (!row || !row.metadata) return {};
+        if (typeof row.metadata === 'object') return row.metadata;
+        try {
+          const parsed = JSON.parse(row.metadata);
+          return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (_e) {
+          return {};
+        }
+      },
+
+      getRowNotes: function(row) {
+        const metadata = this.parseRowMetadata(row);
+        const tracking = metadata && metadata.tracking && typeof metadata.tracking === 'object' ? metadata.tracking : {};
+        return tracking.notes || '';
+      },
+
+      setRowNotesInMetadata: function(row, notes) {
+        const metadata = this.parseRowMetadata(row);
+        const tracking = metadata.tracking && typeof metadata.tracking === 'object' ? metadata.tracking : {};
+        tracking.notes = notes || null;
+        metadata.tracking = tracking;
+        row.metadata = JSON.stringify(metadata);
       },
 
       getModalFilename: function() {
@@ -1844,6 +1889,7 @@
         row.recording = megBids.getModalValue('recording');
         row.space = megBids.getModalValue('space');
         row.description = megBids.getModalValue('description');
+        const notes = megBids.getModalValue('notes');
         row.tracking_system = megBids.getModalValue('trackingSystem');
         row.suffix = megBids.getModalValue('suffix');
         row.extension = megBids.getModalValue('extension');
@@ -1852,6 +1898,8 @@
 
         const rebuiltName = this.getModalFilename();
         if (rebuiltName) row.bids_name = rebuiltName;
+
+        this.setRowNotesInMetadata(row, notes);
 
         megBids.tableSearchIndex[dataIdx] = this.buildRowSearchText(row);
 
