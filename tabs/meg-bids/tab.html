@@ -38,7 +38,7 @@
           <label>Raw Directory <span id="val-raw" class="path-validation"></span></label>
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixRaw">/data/projects/.../</span>
-            <input type="text" id="megCfgRawDir" class="path-input-relative" placeholder="raw/natmeg" value="raw/natmeg" oninput="megBids.syncFormToJson()">
+            <input type="text" id="megCfgRawDir" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()">
           </div>
         </div>
 
@@ -47,7 +47,7 @@
           <label>BIDS Directory <span id="val-bids" class="path-validation"></span></label>
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixBids">/data/projects/.../</span>
-            <input type="text" id="megCfgBidsDir" class="path-input-relative" placeholder="BIDS" value="BIDS" oninput="megBids.syncFormToJson()">
+            <input type="text" id="megCfgBidsDir" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()">
           </div>
         </div>
 
@@ -65,7 +65,7 @@
           <label>Conversion Table File <span id="val-conv" class="path-validation"></span></label>
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixConv">/data/projects/.../</span>
-            <input type="text" id="megCfgConversionFile" class="path-input-relative" placeholder="utils/meg_bids_conversion.tsv" value="utils/meg_bids_conversion.tsv" oninput="megBids.syncFormToJson()">
+            <input type="text" id="megCfgConversionFile" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()">
           </div>
         </div>
 
@@ -85,7 +85,7 @@
           <label>Config File <span id="val-config" class="path-validation"></span></label>
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixConfig">/data/projects/.../</span>
-              <input type="text" id="megCfgConfigFile" class="path-input-relative" placeholder="meg_bids_config.json" value="meg_bids_config.json" oninput="megBids.syncFormToJson()">
+              <input type="text" id="megCfgConfigFile" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()">
           </div>
         </div>
         <br>
@@ -101,12 +101,12 @@
         <pre id="megJsonView" class="json-display"></pre>
 
         <!-- Edit Mode: Textarea -->
-        <textarea id="megJsonEdit" class="json-editor" spellcheck="false" onblur="megBids.syncJsonToForm()" style="display:none;"></textarea>
+        <textarea id="megJsonEdit" class="json-editor" spellcheck="false" onblur="megBids.syncJsonToForm()"></textarea>
 
         <div id="megJsonValidation" class="validation-status"></div>
 
         <!-- Action Buttons -->
-        <div class="form-actions" style="margin-top: 1rem;">
+        <div class="form-actions">
           <button class="btn" onclick="megBids.loadConfigFromFile()">Load from File</button>
           <button class="btn" onclick="megBids.resetDefaults()">Reset to Defaults</button>
           <button class="btn primary" onclick="megBids.saveConfigToFile()">Save Config</button>
@@ -127,45 +127,45 @@
       </p>
 
      <div class="form-section">
-       <div style="display:flex; gap:8px; margin-bottom:0.5rem; flex-wrap:wrap; align-items:center;">
+       <div class="meg-toolbar-row">
          <button id="megAnalyzeBtn" class="btn">Analyze / Refresh</button>
          <button id="megSaveTableBtn" class="btn primary" disabled>Save Table</button>
-         <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem; margin-left:8px;">
-           <input type="checkbox" id="megAnalyzeOverwriteCheck"> Overwrite existing conversion table
+         <label class="meg-inline-checkbox-label meg-inline-checkbox-label-spaced">
+           <input type="checkbox" id="megAnalyzeOverwriteCheck"> Force reanalyze (overwrite existing table)
          </label>
        </div>
-       <div style="font-size:0.82rem; color:#9e9e9e; margin-bottom:0.4rem;">Conversion Table Path</div>
-       <div class="path-row-compound" style="margin-bottom:1rem;">
+       <div class="meg-subtle-label">Conversion Table Path</div>
+       <div class="path-row-compound meg-path-row-spaced">
          <span class="path-static-root" id="megRootPrefixTable">/data/projects/.../</span>
-         <input type="text" id="megTablePath" class="path-input-relative" placeholder="utils/meg_bids_conversion.tsv">
+         <input type="text" id="megTablePath" class="path-input-relative" placeholder="">
        </div>
        <div id="megTableStatus" class="muted"></div>
-       <div id="megStatusLegend" class="status-legend" style="display:none;"></div>
+       <div id="megStatusLegend" class="status-legend"></div>
      </div>
 
      <!-- Search -->
-     <div style="margin-bottom:1rem;">
-       <input type="text" id="megSearchInput" placeholder="Search table..." style="width:100%; padding:6px; background:#1e1e1e; border:1px solid #3c3c3c; color:#d4d4d4; border-radius:3px;">
+     <div class="meg-search-wrap">
+       <input type="text" id="megSearchInput" class="meg-search-input" placeholder="Search table...">
      </div>
 
       <!-- Filters -->
-      <div style="display:flex; gap:8px; margin-bottom:0.5rem; flex-wrap:wrap; align-items:center;">
-        <span style="font-size:0.82rem; color:#9e9e9e;">Use header filter buttons for multi-select with search.</span>
+      <div class="meg-toolbar-row">
+        <span class="meg-subtle-label">Use header filter buttons for multi-select with search.</span>
         <button id="megClearFiltersBtn" class="btn-small" title="Clear all filters">Clear</button>
         <label class="context-checks-label">
           <input type="checkbox" id="megContextChecksChk" disabled>
           Context checks
         </label>
-        <span id="megRowCount" style="margin-left:auto; font-size:0.85rem; color:#9e9e9e;"></span>
+        <span id="megRowCount" class="meg-row-count"></span>
       </div>
 
       <!-- Filter Pills -->
-      <div id="megFilterPills" style="margin-bottom:1rem; display:flex; gap:4px; flex-wrap:wrap;"></div>
+      <div id="megFilterPills" class="meg-filter-pills-row"></div>
 
       <!-- Batch Actions -->
-      <div id="megBatchActions" style="display:none; padding:8px; background:#252526; border:1px solid #3c3c3c; border-radius:4px; margin-bottom:1rem; align-items:center;">
-        <span id="megSelectedCount" style="margin-right:8px;">0 selected</span>
-        <select id="megBatchStatus" style="background:#1e1e1e; border:1px solid #3c3c3c; color:#d4d4d4; padding:4px; margin-right:8px;">
+      <div id="megBatchActions" class="meg-batch-actions">
+        <span id="megSelectedCount" class="meg-selected-count">0 selected</span>
+        <select id="megBatchStatus" class="meg-batch-select">
           <option value="run">run</option>
           <option value="check">check</option>
           <option value="processed">processed</option>
@@ -173,80 +173,80 @@
           <option value="missing">missing</option>
         </select>
         <button id="megBatchApplyBtn" class="btn">Apply Status</button>
-        <input id="megBatchTask" type="text" placeholder="New task name" style="background:#1e1e1e; border:1px solid #3c3c3c; color:#d4d4d4; padding:4px; margin-left:8px; margin-right:8px; min-width:180px;">
+        <input id="megBatchTask" type="text" class="meg-batch-task-input" placeholder="New task name">
         <button id="megBatchApplyTaskBtn" class="btn">Rename Task</button>
       </div>
 
-      <div id="megTableContainer" style="overflow-x:auto; max-height:500px; overflow-y:auto; position:relative;">
-        <table id="megConversionTable" class="config-table" style="display:none; width:100%;">
+      <div id="megTableContainer" class="meg-table-container">
+        <table id="megConversionTable" class="config-table">
           <thead>
             <tr>
               <th class="checkbox-cell"><input type="checkbox" id="megSelectAll" title="Select all visible"></th>
-              <th data-column="status" style="cursor:pointer;" title="Click to sort">
+              <th data-column="status" title="Click to sort">
                 <div class="header-filter-wrap">
                   <span>Status <span class="sort-indicator"></span></span>
                   <button id="megFilterBtn-statuses" class="header-filter-btn" title="Filter status">▾</button>
-                  <div id="megFilterMenu-statuses" class="header-filter-menu" style="display:none;">
+                  <div id="megFilterMenu-statuses" class="header-filter-menu">
                     <input id="megFilterSearch-statuses" class="header-filter-search" type="text" placeholder="Search status...">
                     <div id="megFilterOptions-statuses" class="header-filter-options"></div>
                   </div>
                 </div>
               </th>
-              <th data-column="participant_to" style="cursor:pointer;" title="Click to sort">
+              <th data-column="participant_to" title="Click to sort">
                 <div class="header-filter-wrap">
                   <span>Participant <span class="sort-indicator"></span></span>
                   <button id="megFilterBtn-subjects" class="header-filter-btn" title="Filter participant">▾</button>
-                  <div id="megFilterMenu-subjects" class="header-filter-menu" style="display:none;">
+                  <div id="megFilterMenu-subjects" class="header-filter-menu">
                     <input id="megFilterSearch-subjects" class="header-filter-search" type="text" placeholder="Search participant...">
                     <div id="megFilterOptions-subjects" class="header-filter-options"></div>
                   </div>
                 </div>
               </th>
-              <th data-column="session_to" style="cursor:pointer;" title="Click to sort">
+              <th data-column="session_to" title="Click to sort">
                 <div class="header-filter-wrap">
                   <span>Session <span class="sort-indicator"></span></span>
                   <button id="megFilterBtn-sessions" class="header-filter-btn" title="Filter session">▾</button>
-                  <div id="megFilterMenu-sessions" class="header-filter-menu" style="display:none;">
+                  <div id="megFilterMenu-sessions" class="header-filter-menu">
                     <input id="megFilterSearch-sessions" class="header-filter-search" type="text" placeholder="Search session...">
                     <div id="megFilterOptions-sessions" class="header-filter-options"></div>
                   </div>
                 </div>
               </th>
-              <th data-column="task" style="cursor:pointer;" title="Click to sort">
+              <th data-column="task" title="Click to sort">
                 <div class="header-filter-wrap">
                   <span>Task <span class="sort-indicator"></span></span>
                   <button id="megFilterBtn-tasks" class="header-filter-btn" title="Filter task">▾</button>
-                  <div id="megFilterMenu-tasks" class="header-filter-menu" style="display:none;">
+                  <div id="megFilterMenu-tasks" class="header-filter-menu">
                     <input id="megFilterSearch-tasks" class="header-filter-search" type="text" placeholder="Search task...">
                     <div id="megFilterOptions-tasks" class="header-filter-options"></div>
                   </div>
                 </div>
               </th>
-              <th data-column="run" style="cursor:pointer;" title="Click to sort">
+              <th data-column="run" title="Click to sort">
                 <div class="header-filter-wrap">
                   <span>Run <span class="sort-indicator"></span></span>
                   <button id="megFilterBtn-runs" class="header-filter-btn" title="Filter run">▾</button>
-                  <div id="megFilterMenu-runs" class="header-filter-menu" style="display:none;">
+                  <div id="megFilterMenu-runs" class="header-filter-menu">
                     <input id="megFilterSearch-runs" class="header-filter-search" type="text" placeholder="Search run...">
                     <div id="megFilterOptions-runs" class="header-filter-options"></div>
                   </div>
                 </div>
               </th>
-              <th data-column="datatype" style="cursor:pointer;" title="Click to sort">
+              <th data-column="datatype" title="Click to sort">
                 <div class="header-filter-wrap">
                   <span>Datatype <span class="sort-indicator"></span></span>
                   <button id="megFilterBtn-datatypes" class="header-filter-btn" title="Filter datatype">▾</button>
-                  <div id="megFilterMenu-datatypes" class="header-filter-menu" style="display:none;">
+                  <div id="megFilterMenu-datatypes" class="header-filter-menu">
                     <input id="megFilterSearch-datatypes" class="header-filter-search" type="text" placeholder="Search datatype...">
                     <div id="megFilterOptions-datatypes" class="header-filter-options"></div>
                   </div>
                 </div>
               </th>
-              <th data-column="raw_name" style="cursor:pointer;" title="Click to sort">
+              <th data-column="raw_name" title="Click to sort">
                 <div class="header-filter-wrap">
                   <span>Raw File <span class="sort-indicator"></span></span>
                   <button id="megFilterBtn-rawNames" class="header-filter-btn" title="Filter raw file">▾</button>
-                  <div id="megFilterMenu-rawNames" class="header-filter-menu" style="display:none;">
+                  <div id="megFilterMenu-rawNames" class="header-filter-menu">
                     <input id="megFilterSearch-rawNames" class="header-filter-search" type="text" placeholder="Search raw file...">
                     <div id="megFilterOptions-rawNames" class="header-filter-options"></div>
                   </div>
@@ -256,7 +256,7 @@
           </thead>
           <tbody id="megTableBody"></tbody>
         </table>
-        <div id="megTableEmpty" class="warn" style="display:none;">
+        <div id="megTableEmpty" class="warn">
           No conversion table loaded. Click "Analyze / Refresh" to scan for files.
         </div>
       </div>
@@ -282,9 +282,9 @@
     </p>
 
      <div class="form-section">
-       <div style="display:flex; gap:8px; margin-bottom:1rem; align-items:center;">
+       <div class="meg-run-row">
          <button id="megRunBidsifyBtn" class="btn primary" onclick="megBids.Editor.runBidsify()">Run BIDS Conversion</button>
-         <label style="display:flex; align-items:center; gap:4px; font-size:0.85rem;">
+         <label class="meg-inline-checkbox-label">
            <input type="checkbox" id="megVerboseCheck"> Verbose output
          </label>
        </div>
@@ -292,29 +292,29 @@
      </div>
 
      <!-- Job Status -->
-     <div id="megJobStatus" style="display:none; margin-bottom:1rem; padding:8px; background:#252526; border:1px solid #3c3c3c; border-radius:4px;">
-       <span>Job ID: <code id="megJobId" style="background:#1e1e1e; padding:2px 6px;"></code></span>
-       <span id="megJobStatusText" style="margin-left:8px;"></span>
+     <div id="megJobStatus" class="meg-job-status">
+       <span>Job ID: <code id="megJobId" class="meg-job-id"></code></span>
+       <span id="megJobStatusText" class="meg-job-status-text"></span>
      </div>
 
-    <div id="megProgressSection" style="display:none; margin-top:1rem;">
-      <div style="background:#1e1e1e; border:1px solid #3c3c3c; border-radius:4px; padding:1rem;">
-        <div style="margin-bottom:0.5rem;">Progress</div>
-        <div id="megProgressBar" style="background:#3c3c3c; height:20px; border-radius:3px; overflow:hidden;">
-          <div style="background:#0e639c; height:100%; width:0%; transition:width 0.3s;"></div>
+    <div id="megProgressSection" class="meg-progress-section">
+      <div class="meg-progress-card">
+        <div class="meg-progress-title">Progress</div>
+        <div id="megProgressBar" class="meg-progress-bar">
+          <div class="meg-progress-fill"></div>
         </div>
-        <div id="megProgressText" style="margin-top:0.5rem; font-size:0.85rem;"></div>
+        <div id="megProgressText" class="meg-progress-text"></div>
       </div>
     </div>
 
-    <div id="megOutputSection" style="margin-top:1rem;">
-      <div style="font-weight:700; margin-bottom:8px;">Output</div>
-      <div id="megOutput" style="background:#0d0d0d; border:1px solid #3c3c3c; border-radius:4px; padding:1rem; min-height:100px; max-height:300px; overflow-y:auto; font-family:monospace; font-size:0.85rem; white-space:pre-wrap;">Ready to convert...</div>
+    <div id="megOutputSection" class="meg-output-section">
+      <div class="meg-output-title">Output</div>
+      <div id="megOutput" class="meg-output-console">Ready to convert...</div>
     </div>
   </div>
 
   <!-- Step 4: Results -->
-  <div id="meg-step-4" class="meg-step" style="display:none !important;" aria-hidden="true">
+  <div id="meg-step-4" class="meg-step meg-step-hidden" aria-hidden="true">
     <h3>Results & QA Report</h3>
     <p class="description">
       View BIDS conversion results and quality assurance analysis.
@@ -322,54 +322,56 @@
 
     <div class="form-section">
       <button id="megGenerateReportBtn" class="btn" onclick="megBids.Editor.generateReport()">Generate Report</button>
-      <button id="megRefreshReportBtn" class="btn" onclick="megBids.Editor.loadReport()" style="margin-left:8px;">Refresh</button>
+      <button id="megRefreshReportBtn" class="btn meg-btn-spaced" onclick="megBids.Editor.loadReport()">Refresh</button>
     </div>
 
-     <div id="megReportSection" style="margin-top:1rem;">
+     <div id="megReportSection" class="meg-report-section">
        <!-- Stats Dashboard -->
-       <div id="megStatsDashboard" style="display:flex; gap:16px; margin-bottom:1rem;">
-         <div style="flex:1; padding:12px; background:#252526; border:1px solid #3c3c3c; border-radius:4px;">
-           <div style="font-size:0.85rem; color:#9e9e9e;">Subjects</div>
-           <div id="megStatSubjects" style="font-size:1.5rem; font-weight:700;">-</div>
+       <div id="megStatsDashboard" class="meg-stats-dashboard">
+         <div class="meg-stat-card">
+           <div class="meg-stat-label">Subjects</div>
+           <div id="megStatSubjects" class="meg-stat-value">-</div>
          </div>
-         <div style="flex:1; padding:12px; background:#252526; border:1px solid #3c3c3c; border-radius:4px;">
-           <div style="font-size:0.85rem; color:#9e9e9e;">Sessions</div>
-           <div id="megStatSessions" style="font-size:1.5rem; font-weight:700;">-</div>
+         <div class="meg-stat-card">
+           <div class="meg-stat-label">Sessions</div>
+           <div id="megStatSessions" class="meg-stat-value">-</div>
          </div>
-         <div style="flex:1; padding:12px; background:#252526; border:1px solid #3c3c3c; border-radius:4px;">
-           <div style="font-size:0.85rem; color:#9e9e9e;">Tasks</div>
-           <div id="megStatTasks" style="font-size:1.5rem; font-weight:700;">-</div>
+         <div class="meg-stat-card">
+           <div class="meg-stat-label">Tasks</div>
+           <div id="megStatTasks" class="meg-stat-value">-</div>
          </div>
-         <div style="flex:1; padding:12px; background:#252526; border:1px solid #3c3c3c; border-radius:4px;">
-           <div style="font-size:0.85rem; color:#9e9e9e;">Compliance</div>
-           <div id="megStatCompliance" style="font-size:1.5rem; font-weight:700;">-</div>
+         <div class="meg-stat-card">
+           <div class="meg-stat-label">Compliance</div>
+           <div id="megStatCompliance" class="meg-stat-value">-</div>
          </div>
        </div>
 
-       <div id="megReportLoading" style="display:none;">Loading report...</div>
-       <div id="megReportContent" style="display:none;">
-         <div id="megReportSummary" style="background:#1e1e1e; border:1px solid #3c3c3c; border-radius:4px; padding:1rem; margin-bottom:1rem;"></div>
-         <div id="megReportFindings" style="background:#0d0d0d; border:1px solid #3c3c3c; border-radius:4px; padding:1rem; max-height:400px; overflow-y:auto;"></div>
+       <div id="megReportLoading" class="meg-report-loading">Loading report...</div>
+       <div id="megReportContent" class="meg-report-content">
+         <div id="megReportSummary" class="meg-report-summary"></div>
+         <div id="megReportFindings" class="meg-report-findings"></div>
        </div>
         <div id="megReportEmpty" class="warn">No report available. Run conversion first, then generate report.</div>
       </div>
    </div>
 
    <!-- Advanced Edit Modal -->
-   <div id="megEditModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:1000; overflow-y:auto;">
-     <div style="max-width:800px; margin:2rem auto; background:#1e1e1e; border:1px solid #3c3c3c; border-radius:4px; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+   <div id="megEditModal" class="meg-edit-modal">
+     <div class="meg-edit-modal-panel">
        <!-- Modal Header -->
-       <div style="display:flex; justify-content:space-between; align-items:center; padding:1rem; border-bottom:1px solid #3c3c3c; background:#252526;">
-         <h3 id="megModalHeader" style="margin:0; color:#d4d4d4;">Edit Row</h3>
-         <button id="megModalClose" style="background:transparent; border:none; color:#9e9e9e; font-size:1.5rem; cursor:pointer;" title="Close">&times;</button>
+       <div class="meg-edit-modal-header">
+         <h3 id="megModalHeader" class="meg-edit-modal-title">Edit Row</h3>
+         <button id="megModalClose" class="meg-edit-modal-close" title="Close">&times;</button>
        </div>
 
        <!-- Modal Body -->
-       <div style="padding:1.5rem; max-height:70vh; overflow-y:auto;">
+       <div class="meg-edit-modal-body">
         <!-- Source File Info -->
-         <div style="background:#252526; border:1px solid #3c3c3c; border-radius:3px; padding:0.75rem 1rem; margin-bottom:1rem;">
-           <div style="font-size:0.8rem; color:#9e9e9e; margin-bottom:0.5rem;">Source File (Read-Only):</div>
-           <div id="megEditSource" style="font-size:0.85rem; color:#666; word-break:break-all; margin-bottom:1rem;"></div>
+         <div class="meg-modal-card meg-modal-card-source">
+           <div class="meg-modal-label-sm meg-modal-label-source">Source File (Read-Only):</div>
+           <div id="megEditSource" class="meg-modal-path"></div>
+           <div class="meg-modal-label-sm">Source File Size:</div>
+           <div id="megEditSourceSize" class="meg-modal-size">Unknown</div>
            <div class="modal-field">
              <label>Status <span class="help-icon" title="Conversion status: run, check, processed, skip, missing">?</span></label>
              <select id="megEditStatus" data-bids-field="status">
@@ -382,23 +384,27 @@
            </div>
          </div>
          <!-- Converted File Display (shown when status = processed) -->
-         <div id="megEditConvertedSection" style="background:#1a2a3a; border:1px solid #2a5a8a; border-radius:3px; padding:0.75rem 1rem; margin-bottom:1rem;">
-           <div style="font-size:0.8rem; color:#9e9e9e; margin-bottom:0.35rem;">Converted BIDS File:</div>
-           <div id="megEditConverted" style="font-size:0.85rem; color:#8cb4ff; word-break:break-all;"></div>
+         <div id="megEditConvertedSection" class="meg-modal-card meg-modal-card-converted">
+           <div class="meg-modal-label-sm">Converted BIDS File:</div>
+           <div id="megEditConverted" class="meg-modal-converted-path"></div>
          </div>
          <!-- Live Filename Preview -->
-         <div style="background:#0d0d0d; border:1px solid #3c3c3c; border-radius:3px; padding:1rem; margin-bottom:1.5rem;">
-           <div style="font-size:0.8rem; color:#9e9e9e; margin-bottom:0.5rem;">BIDS Filename Preview:</div>
-           <code id="megFilenamePreview" style="font-size:0.9rem; color:#4ec9b0; word-break:break-all;">No filename generated yet</code>
+         <div class="meg-modal-card meg-modal-card-preview">
+           <div class="meg-modal-label-sm meg-modal-label-source">BIDS Filename Preview:</div>
+           <code id="megFilenamePreview" class="meg-modal-preview-code">No filename generated yet</code>
+         </div>
+         <div class="modal-field meg-modal-full-width meg-modal-section">
+           <label>Notes <span class="help-icon" title="Optional free-text notes stored in metadata">?</span></label>
+           <textarea id="megEditNotes" data-bids-field="notes" rows="3" placeholder="Optional notes"></textarea>
          </div>
 
          <!-- Required Entities -->
-         <div style="margin-bottom:1.5rem;">
-           <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem; color:#d4d4d4; font-weight:bold;">
+         <div class="meg-modal-section">
+           <div class="meg-modal-section-title">
              Required BIDS Entities
              <span class="help-icon" title="These fields are required for valid BIDS filenames">?</span>
            </div>
-           <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+           <div class="meg-modal-grid-2">
              <div class="modal-field">
                <label>Subject <span class="help-icon" title="BIDS subject ID (e.g., '01'). No 'sub-' prefix needed.">?</span></label>
                <input type="text" id="megEditSubject" data-bids-field="subject" placeholder="e.g., 01">
@@ -407,7 +413,7 @@
                <label>Session <span class="help-icon" title="Session identifier (e.g., '01'). No 'ses-' prefix needed.">?</span></label>
                <input type="text" id="megEditSession" data-bids-field="session" placeholder="e.g., 01">
              </div>
-             <div class="modal-field" style="grid-column:1 / -1;">
+             <div class="modal-field meg-modal-full-width">
                <label>Task <span class="help-icon" title="Task name (e.g., 'rest', 'motor'). Will be lowercased.">?</span></label>
                <input type="text" id="megEditTask" data-bids-field="task" placeholder="e.g., rest">
              </div>
@@ -415,12 +421,12 @@
          </div>
 
          <!-- Optional Entities -->
-         <div style="margin-bottom:1.5rem;">
-           <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem; color:#d4d4d4; font-weight:bold;">
+         <div class="meg-modal-section">
+           <div class="meg-modal-section-title">
              Optional BIDS Entities
              <span class="help-icon" title="These fields are optional but commonly used">?</span>
            </div>
-           <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+           <div class="meg-modal-grid-2">
              <div class="modal-field">
                <label>Acquisition <span class="help-icon" title="Acquisition parameters label (e.g., 'highres')">?</span></label>
                <input type="text" id="megEditAcquisition" data-bids-field="acquisition">
@@ -441,12 +447,12 @@
          </div>
 
          <!-- Advanced Entities (Collapsible) -->
-         <div style="margin-bottom:1.5rem;">
-           <div id="megAdvancedToggle" style="cursor:pointer; color:#0e639c; font-weight:bold; margin-bottom:0.75rem;">
+         <div class="meg-modal-section">
+           <div id="megAdvancedToggle" class="meg-advanced-toggle">
              ▶ Advanced Entities
            </div>
-           <div id="megAdvancedContent" style="display:none;">
-             <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+           <div id="megAdvancedContent" class="meg-advanced-content">
+             <div class="meg-modal-grid-2">
                <div class="modal-field">
                  <label>Recording <span class="help-icon" title="Recording name">?</span></label>
                  <input type="text" id="megEditRecording" data-bids-field="recording">
@@ -468,12 +474,12 @@
          </div>
 
          <!-- File Properties -->
-         <div style="margin-bottom:1.5rem;">
-           <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem; color:#d4d4d4; font-weight:bold;">
+         <div class="meg-modal-section">
+           <div class="meg-modal-section-title">
              File Properties
              <span class="help-icon" title="These define the file type and extension">?</span>
            </div>
-           <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+           <div class="meg-modal-grid-2">
              <div class="modal-field">
                <label>Suffix <span class="help-icon" title="File suffix: meg, channels, events, etc.">?</span></label>
                <select id="megEditSuffix" data-bids-field="suffix">
@@ -511,9 +517,9 @@
        </div>
 
        <!-- Modal Footer -->
-       <div style="display:flex; justify-content:space-between; align-items:center; padding:1rem; border-top:1px solid #3c3c3c; background:#252526;">
+       <div class="meg-edit-modal-footer">
          <button id="megModalCancel" class="btn">Cancel</button>
-         <div style="display:flex; gap:8px;">
+         <div class="meg-edit-modal-footer-actions">
            <button id="megModalPrev" class="btn" title="Previous row">&lt; Prev</button>
            <button id="megModalNext" class="btn" title="Next row">Next &gt;</button>
            <button id="megModalSave" class="btn primary">Save Changes</button>
@@ -524,20 +530,21 @@
 </div>
 
 
-<div id="megHelpTooltip" style="display:none; position:fixed; z-index:2000; max-width:320px; background:#111; color:#d4d4d4; border:1px solid #3c3c3c; border-radius:4px; padding:8px; font-size:0.82rem; line-height:1.35; box-shadow:0 4px 14px rgba(0,0,0,0.45);"></div>
+<div id="megHelpTooltip" class="meg-help-tooltip"></div>
 
 <script>
 (function() {
   // Load meg-tab.js with auth token from current URL
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token') || '';
+  const assetVersion = '20260529-notes';
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/meg-tab.css' + (token ? '?token=' + encodeURIComponent(token) : '');
+  link.href = '/meg-tab.css' + (token ? '?token=' + encodeURIComponent(token) : '?') + '&v=' + encodeURIComponent(assetVersion);
   document.head.appendChild(link);
 
   const script = document.createElement('script');
-  script.src = '/meg-tab.js' + (token ? '?token=' + encodeURIComponent(token) : '');
+  script.src = '/meg-tab.js' + (token ? '?token=' + encodeURIComponent(token) : '?') + '&v=' + encodeURIComponent(assetVersion);
   script.async = false; // Ensure synchronous loading
   document.head.appendChild(script);
 })();

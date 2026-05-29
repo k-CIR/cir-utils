@@ -24,9 +24,7 @@ CONVERSION_TABLE_FIELDS = {
     'bids_path': 'Target BIDS directory path',
     'bids_name': 'Target BIDS filename',
     'event_id': 'Associated event file for task',
-    'last_processed': 'ISO timestamp of last successful processing',
-    'attempt_count': 'Number of processing attempts on this file',
-    'status_history': 'JSON array tracking status transitions with timestamps'
+    'metadata': 'JSON metadata with source/converted file stats and tracking fields (last_processed, attempt_count, status_history, notes)'
 }
 
 DERIVATIVES_SUBFOLDER = 'derivatives/preprocessed-meg'

@@ -77,6 +77,7 @@ API_TAB_CONTENT = '/tab-content'
 # MEG endpoints
 MEG_API_GET_CONFIG = '/meg-get-config'
 MEG_API_GET_PROJECT_ROOT = '/meg-get-project-root'
+MEG_API_GET_CONVERSION_TABLE = '/meg-get-conversion-table'
 MEG_API_VALIDATE_PATHS = '/meg-validate-paths'
 MEG_API_LOAD_CONFIG = '/meg-load-config'
 MEG_API_SAVE_CONFIG = '/meg-save-config'
@@ -85,4 +86,10 @@ MEG_API_LOAD_CONVERSION_TABLE = '/meg-load-conversion-table'
 MEG_API_SAVE_CONVERSION_TABLE = '/meg-save-conversion-table'
 MEG_API_RUN_BIDSIFY = '/meg-run-bidsify'
 MEG_API_BIDSIFY_PROGRESS = '/meg-bidsify-progress'
+MEG_API_RUN_REPORT = '/meg-run-report'
+MEG_API_GET_REPORT = '/meg-get-report'
+
+# MEG static assets
+MEG_ASSET_JS = '/meg-tab.js'
+MEG_ASSET_CSS = '/meg-tab.css'
 
