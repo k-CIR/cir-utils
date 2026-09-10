@@ -1,8 +1,27 @@
+/* =============================================================================
+   MEG BIDS Tab Stylesheet
+   -----------------------------------------------------------------------------
+   Table of Contents
+   1) Visibility & State Helpers
+   2) Configuration & JSON Editor
+   3) Editor (Step 2)
+   4) Conversion Run (Step 3)
+   5) Report & QA (Step 4)
+   6) Table, Filters & Row States
+   7) Advanced Edit Modal
+   8) Navigation
+   9) Shared Utility Components
+   10) Tooltip Overlay
+   ========================================================================== */
+
 #meg-bids-container {
   font-family: monospace;
   color: #d4d4d4;
 }
 
+/* ========================================================================== */
+/* 1) Visibility & State Helpers                                               */
+/* ========================================================================== */
 .meg-step {
   display: none;
 }
@@ -11,7 +30,13 @@
   display: block;
 }
 
-/* Config Layout */
+.meg-step-hidden {
+  display: none !important;
+}
+
+/* ========================================================================== */
+/* 2) Configuration & JSON Editor                                              */
+/* ========================================================================== */
 .meg-config-layout {
   display: grid;
   grid-template-columns: 45% 55%;
@@ -37,6 +62,11 @@
   padding: 1rem;
   display: flex;
   flex-direction: column;
+}
+
+/* JSON editor starts hidden until user toggles edit mode. */
+#megJsonEdit {
+  display: none;
 }
 
 /* Form Groups */
@@ -312,7 +342,9 @@
   color: #cca700;
 }
 
-/* Filter Pills */
+/* ========================================================================== */
+/* 6) Table, Filters & Row States                                              */
+/* ========================================================================== */
 #megFilterPills {
   min-height: 28px;
 }
@@ -373,6 +405,11 @@
   gap: 6px;
 }
 
+/* Keep legend hidden until table data is loaded and rendered. */
+#megStatusLegend {
+  display: none;
+}
+
 .status-legend-item {
   display: inline-flex;
   align-items: center;
@@ -399,7 +436,7 @@
 .status-legend-item.status-skip { background: #343434; border-color: #6d6d6d; color: #d6d6d6; }
 .status-legend-item.status-missing { background: #3f2424; border-color: #cc6666; color: #ffd0d0; }
 
-/* Table Sorting */
+/* Sorting + Header Filter Menus */
 #megConversionTable th {
   cursor: pointer;
   user-select: none;
@@ -439,6 +476,7 @@
 }
 
 .header-filter-menu {
+  display: none;
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -449,6 +487,252 @@
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
   z-index: 1200;
   padding: 8px;
+}
+
+/* ========================================================================== */
+/* 3) Editor (Step 2)                                                          */
+/* ========================================================================== */
+.meg-toolbar-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.meg-inline-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.meg-inline-checkbox-label-spaced {
+  margin-left: 8px;
+}
+
+.meg-subtle-label {
+  font-size: 0.82rem;
+  color: #9e9e9e;
+}
+
+.meg-path-row-spaced {
+  margin-bottom: 1rem;
+}
+
+.meg-search-wrap {
+  margin-bottom: 1rem;
+}
+
+.meg-search-input {
+  width: 100%;
+  padding: 6px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  color: #d4d4d4;
+  border-radius: 3px;
+}
+
+.meg-row-count {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: #9e9e9e;
+}
+
+.meg-filter-pills-row {
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.meg-batch-actions {
+  display: none;
+  padding: 8px;
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.meg-selected-count {
+  margin-right: 8px;
+}
+
+.meg-batch-select,
+.meg-batch-task-input {
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  color: #d4d4d4;
+  padding: 4px;
+}
+
+.meg-batch-select {
+  margin-right: 8px;
+}
+
+.meg-batch-task-input {
+  margin-left: 8px;
+  margin-right: 8px;
+  min-width: 180px;
+}
+
+.meg-table-container {
+  overflow-x: auto;
+  max-height: 500px;
+  overflow-y: auto;
+  position: relative;
+}
+
+#megConversionTable {
+  display: none;
+}
+
+#megTableEmpty {
+  display: none;
+}
+
+/* ========================================================================== */
+/* 4) Conversion Run (Step 3)                                                  */
+/* ========================================================================== */
+.meg-run-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.meg-job-status {
+  display: none;
+  margin-bottom: 1rem;
+  padding: 8px;
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.meg-job-id {
+  background: #1e1e1e;
+  padding: 2px 6px;
+}
+
+.meg-job-status-text {
+  margin-left: 8px;
+}
+
+.meg-progress-section {
+  display: none;
+  margin-top: 1rem;
+}
+
+.meg-progress-card {
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.meg-progress-title {
+  margin-bottom: 0.5rem;
+}
+
+.meg-progress-bar {
+  background: #3c3c3c;
+  height: 20px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.meg-progress-fill {
+  background: #0e639c;
+  height: 100%;
+  width: 0;
+  transition: width 0.3s;
+}
+
+.meg-progress-text {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.meg-output-section {
+  margin-top: 1rem;
+}
+
+.meg-output-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.meg-output-console {
+  background: #0d0d0d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 1rem;
+  min-height: 100px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+/* ========================================================================== */
+/* 5) Report & QA (Step 4)                                                     */
+/* ========================================================================== */
+.meg-btn-spaced {
+  margin-left: 8px;
+}
+
+.meg-report-section {
+  margin-top: 1rem;
+}
+
+.meg-stats-dashboard {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 1rem;
+}
+
+.meg-stat-card {
+  flex: 1;
+  padding: 12px;
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+
+.meg-stat-label {
+  font-size: 0.85rem;
+  color: #9e9e9e;
+}
+
+.meg-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.meg-report-loading,
+.meg-report-content {
+  display: none;
+}
+
+.meg-report-summary {
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.meg-report-findings {
+  background: #0d0d0d;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .header-filter-search {
@@ -479,7 +763,7 @@
   color: #d4d4d4;
 }
 
-/* Row States */
+/* Row visual states */
 #megTableBody tr:hover {
   background: #2a2a2a !important;
   cursor: pointer;
@@ -498,7 +782,163 @@
   width: 40px;
 }
 
-/* Modal Styles */
+/* ========================================================================== */
+/* 7) Advanced Edit Modal                                                      */
+/* ========================================================================== */
+.meg-edit-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 1000;
+  overflow-y: auto;
+}
+
+.meg-edit-modal-panel {
+  max-width: 800px;
+  margin: 2rem auto;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.meg-edit-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid #3c3c3c;
+  background: #252526;
+}
+
+.meg-edit-modal-title {
+  margin: 0;
+  color: #d4d4d4;
+}
+
+.meg-edit-modal-close {
+  background: transparent;
+  border: none;
+  color: #9e9e9e;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.meg-edit-modal-body {
+  padding: 1.5rem;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.meg-modal-card {
+  border: 1px solid #3c3c3c;
+  border-radius: 3px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.meg-modal-card-source {
+  background: #252526;
+}
+
+.meg-modal-card-converted {
+  background: #1a2a3a;
+  border-color: #2a5a8a;
+}
+
+.meg-modal-card-preview {
+  background: #0d0d0d;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.meg-modal-label-sm {
+  font-size: 0.8rem;
+  color: #9e9e9e;
+  margin-bottom: 0.35rem;
+}
+
+.meg-modal-label-sm.meg-modal-label-source {
+  margin-bottom: 0.5rem;
+}
+
+.meg-modal-path {
+  font-size: 0.85rem;
+  color: #666;
+  word-break: break-all;
+  margin-bottom: 1rem;
+}
+
+.meg-modal-size {
+  font-size: 0.85rem;
+  color: #9e9e9e;
+  margin-bottom: 1rem;
+}
+
+.meg-modal-converted-path {
+  font-size: 0.85rem;
+  color: #8cb4ff;
+  word-break: break-all;
+}
+
+.meg-modal-preview-code {
+  font-size: 0.9rem;
+  color: #4ec9b0;
+  word-break: break-all;
+}
+
+.meg-modal-section {
+  margin-bottom: 1.5rem;
+}
+
+.meg-modal-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  color: #d4d4d4;
+  font-weight: bold;
+}
+
+.meg-modal-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.meg-modal-full-width {
+  grid-column: 1 / -1;
+}
+
+.meg-advanced-toggle {
+  cursor: pointer;
+  color: #0e639c;
+  font-weight: bold;
+  margin-bottom: 0.75rem;
+}
+
+.meg-advanced-content {
+  display: none;
+}
+
+.meg-edit-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-top: 1px solid #3c3c3c;
+  background: #252526;
+}
+
+.meg-edit-modal-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .modal-field {
   display: flex;
   flex-direction: column;
@@ -514,7 +954,8 @@
 }
 
 .modal-field input,
-.modal-field select {
+.modal-field select,
+.modal-field textarea {
   background: #1e1e1e;
   border: 1px solid #3c3c3c;
   border-radius: 3px;
@@ -525,9 +966,15 @@
 }
 
 .modal-field input:focus,
-.modal-field select:focus {
+.modal-field select:focus,
+.modal-field textarea:focus {
   outline: none;
   border-color: #0e639c;
+}
+
+.modal-field textarea {
+  width: 100%;
+  resize: vertical;
 }
 
 .help-icon {
@@ -563,7 +1010,9 @@
   background: #4a4a4a;
 }
 
-/* Navigation */
+/* ========================================================================== */
+/* 8) Navigation                                                               */
+/* ========================================================================== */
 .view-tabs {
   display: flex;
   gap: 0.5rem;
@@ -592,7 +1041,9 @@
   border-color: #3c3c3c;
 }
 
-/* Generic Styles */
+/* ========================================================================== */
+/* 9) Shared Utility Components                                                */
+/* ========================================================================== */
 .form-section {
   background: #252526;
   border: 1px solid #3c3c3c;
@@ -671,4 +1122,22 @@
 
 .context-checks-label input[type="checkbox"] {
   accent-color: #0e639c;
+}
+
+/* ========================================================================== */
+/* 10) Tooltip Overlay                                                         */
+/* ========================================================================== */
+.meg-help-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 2000;
+  max-width: 320px;
+  background: #111;
+  color: #d4d4d4;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
