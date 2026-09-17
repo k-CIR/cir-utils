@@ -1146,3 +1146,35 @@
   line-height: 1.35;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
 }
+
+/* ========================================================================== */
+/* 11) Stage Jobs step + Make BIDS staged/finished summary                    */
+/* ========================================================================== */
+.meg-stage-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.meg-stage-section-header h4 {
+  margin: 0;
+}
+
+.meg-stage-table-container {
+  max-height: 320px;
+}
+
+.meg-make-bids-filter {
+  margin-right: 6px;
+}
+
+/* Rows that are staged while already 'processed' will be reconverted and
+   overwritten on the next run - flag this clearly before the user hits Run. */
+.meg-will-overwrite td {
+  background: #4a3a12 !important;
+}
+
+.meg-will-overwrite:hover td {
+  background: #5a4718 !important;
+}

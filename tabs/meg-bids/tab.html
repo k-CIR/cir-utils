@@ -16,7 +16,7 @@
     </button>
     <button type="button" class="nav-item" data-step="3" onclick="megBids.switchStep(3)">
       <span class="step-number">3.</span>
-      <span class="step-label">Make BIDS</span>
+      <span class="step-label">Stage &amp; Convert</span>
     </button>
   </nav>
 
@@ -69,13 +69,6 @@
           </div>
         </div>
 
-        <!-- Overwrite Toggle -->
-        <div class="form-group checkbox">
-          <label class="checkbox-label">
-            <input type="checkbox" id="megCfgOverwrite" onchange="megBids.syncFormToJson()">
-            <span>Overwrite existing BIDS files</span>
-          </label>
-        </div>
       </div>
 
       <!-- Right: JSON Editor -->
@@ -274,28 +267,61 @@
      -->
    </div>
 
-  <!-- Step 3: Make BIDS -->
+  <!-- Step 3: Stage & Convert -->
   <div id="meg-step-3" class="meg-step">
-    <h3>Make BIDS</h3>
+    <h3>Stage &amp; Convert</h3>
     <p class="description">
-      Run the BIDS conversion pipeline. This will convert all files marked as 'run' to BIDS format.
+      Select files and stage them for conversion, then run the BIDS conversion pipeline. Only staged jobs are
+      processed; staging a row that already has BIDS output (status 'processed') will cause it to be reconverted
+      and overwritten the next time you run the conversion.
     </p>
 
-     <div class="form-section">
-       <div class="meg-run-row">
-         <button id="megRunBidsifyBtn" class="btn primary" onclick="megBids.Editor.runBidsify()">Run BIDS Conversion</button>
-         <label class="meg-inline-checkbox-label">
-           <input type="checkbox" id="megVerboseCheck"> Verbose output
-         </label>
-       </div>
-       <div id="megConversionStatus" class="muted"></div>
-     </div>
+    <div class="form-section">
+      <div class="meg-toolbar-row">
+        <span class="meg-subtle-label">View:</span>
+        <button type="button" id="megStageViewAll" class="btn-small meg-make-bids-filter" onclick="megBids.Editor.setStageView('all')">All</button>
+        <button type="button" id="megStageViewUnstaged" class="btn-small meg-make-bids-filter active" onclick="megBids.Editor.setStageView('unstaged')">Unstaged</button>
+        <button type="button" id="megStageViewStaged" class="btn-small meg-make-bids-filter" onclick="megBids.Editor.setStageView('staged')">Staged</button>
+        <button type="button" id="megStageViewFinished" class="btn-small meg-make-bids-filter" onclick="megBids.Editor.setStageView('finished')">Finished</button>
+        <span id="megStageViewCount" class="meg-row-count"></span>
+      </div>
+      <div id="megStageContainer" class="meg-table-container meg-stage-table-container">
+        <table id="megStageTable" class="config-table">
+          <thead>
+            <tr>
+              <th class="checkbox-cell"><input type="checkbox" id="megStageSelectAll" title="Select all"></th>
+              <th>Status</th>
+              <th>Raw File</th>
+              <th>Output File</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="megStageBody"></tbody>
+        </table>
+        <div id="megStageEmpty" class="warn">No rows in this view.</div>
+      </div>
+      <div class="meg-toolbar-row">
+        <span id="megStageSelectedCount" class="meg-selected-count"></span>
+        <button id="megStageSelectedBtn" class="btn primary" disabled>Stage Selected</button>
+        <button id="megUnstageSelectedBtn" class="btn" disabled>Unstage Selected</button>
+      </div>
+    </div>
 
-     <!-- Job Status -->
-     <div id="megJobStatus" class="meg-job-status">
-       <span>Job ID: <code id="megJobId" class="meg-job-id"></code></span>
-       <span id="megJobStatusText" class="meg-job-status-text"></span>
-     </div>
+    <div class="form-section">
+      <div class="meg-run-row">
+        <button id="megRunBidsifyBtn" class="btn primary" onclick="megBids.Editor.runBidsify()">Run BIDS Conversion</button>
+        <label class="meg-inline-checkbox-label">
+          <input type="checkbox" id="megVerboseCheck"> Verbose output
+        </label>
+      </div>
+      <div id="megConversionStatus" class="muted"></div>
+    </div>
+
+    <!-- Job Status -->
+    <div id="megJobStatus" class="meg-job-status">
+      <span>Job ID: <code id="megJobId" class="meg-job-id"></code></span>
+      <span id="megJobStatusText" class="meg-job-status-text"></span>
+    </div>
 
     <div id="megProgressSection" class="meg-progress-section">
       <div class="meg-progress-card">
@@ -313,8 +339,8 @@
     </div>
   </div>
 
-  <!-- Step 4: Results -->
-  <div id="meg-step-4" class="meg-step meg-step-hidden" aria-hidden="true">
+  <!-- Step 5: Results (unreachable; no nav entry targets this step) -->
+  <div id="meg-step-5" class="meg-step meg-step-hidden" aria-hidden="true">
     <h3>Results & QA Report</h3>
     <p class="description">
       View BIDS conversion results and quality assurance analysis.

@@ -292,6 +292,8 @@ def _build_row_metadata(row, refreshed_at):
     if _is_missing_scalar(last_processed_source):
         last_processed_source = row.get('last_processed')
 
+    staged_value = bool(tracking_existing.get('staged', False))
+
     metadata.update({
         'schema_version': 1,
         'refreshed_at': refreshed_at,
@@ -303,6 +305,7 @@ def _build_row_metadata(row, refreshed_at):
             'attempt_count': _parse_int(attempt_count_source, default=0),
             'status_history': _parse_status_history(history_source),
             'notes': None if _is_missing_scalar(notes_value) else str(notes_value),
+            'staged': staged_value,
         },
     })
     return metadata
@@ -338,8 +341,32 @@ def _bids_output_exists(bids_path: Optional[str], bids_name: Optional[str]) -> b
     return False
 
 
+def get_row_staged(row) -> bool:
+    """Return whether a conversion-table row is currently staged for BIDS conversion."""
+    metadata = _parse_metadata_object(row.get('metadata') if hasattr(row, 'get') else row)
+    tracking = metadata.get('tracking', {}) if isinstance(metadata.get('tracking'), dict) else {}
+    return bool(tracking.get('staged', False))
+
+
+def _set_staged(table: pd.DataFrame, row_idx, staged: bool) -> pd.DataFrame:
+    """Set metadata.tracking.staged for a single row."""
+    metadata = _parse_metadata_object(table.at[row_idx, 'metadata'])
+    tracking = metadata.get('tracking', {}) if isinstance(metadata.get('tracking'), dict) else {}
+    tracking['staged'] = bool(staged)
+    metadata['tracking'] = tracking
+    table.at[row_idx, 'metadata'] = json.dumps(metadata, default=str)
+    return table
+
+
 def _update_status_with_history(table: pd.DataFrame, row_idx, new_status: str) -> pd.DataFrame:
-    """Update status and record transition in metadata.tracking.status_history."""
+    """Update status and record transition in metadata.tracking.status_history.
+
+    An actual transition to a status other than 'run' (e.g. processed, error,
+    missing, skip, check) automatically clears the staged flag. A no-op
+    re-confirmation of the current status does not, since staging an
+    already-'processed' row on purpose is how a user requests it be
+    reprocessed/overwritten.
+    """
     old_status = table.at[row_idx, 'status']
     table.at[row_idx, 'status'] = new_status
 
@@ -359,6 +386,13 @@ def _update_status_with_history(table: pd.DataFrame, row_idx, new_status: str) -
     tracking['attempt_count'] = _parse_int(tracking.get('attempt_count'), default=0)
     if _is_missing_scalar(tracking.get('notes')):
         tracking['notes'] = None
+    if old_status != new_status and new_status != 'run':
+        # Only clear staging on an actual transition away from 'run' (e.g. a manual
+        # edit, or a file going missing). A no-op re-confirmation of an existing
+        # status (e.g. re-analysis re-detecting an already-'processed' row) must
+        # NOT clear staging, since staging a 'processed' row on purpose is how a
+        # user requests it be reprocessed/overwritten.
+        tracking['staged'] = False
     metadata['tracking'] = tracking
     table.at[row_idx, 'metadata'] = json.dumps(metadata, default=str)
 

@@ -18,7 +18,7 @@ from mne_bids import write_meg_calibration, write_meg_crosstalk
 from tqdm import tqdm
 
 from .constants import HEADPOS_PATTERNS
-from .conversion_table import load_conversion_table, update_conversion_table, _record_processing_success
+from .conversion_table import load_conversion_table, update_conversion_table, _record_processing_success, get_row_staged, _set_staged
 from .parsing import bids_path_from_rawname, get_split_file_parts
 from .sidecars import add_channel_parameters, copy_eeg_to_meg, update_sidecars
 from .templates import create_dataset_description, create_proc_description
@@ -35,6 +35,66 @@ except ImportError:
 mne.set_log_level('WARNING')
 
 
+def _cleanup_stale_bids_output(old_bids_path, old_bids_name, new_fpath: str, bids_root: str, verbose: bool = False):
+    """Remove a row's previous BIDS output file(s) when reprocessing produced a
+    different output path/name (e.g. participant, session, task, run, or other
+    entities were edited after the file was first converted).
+
+    write_raw_bids(overwrite=True) only ever overwrites files at the *new*
+    entity-derived path. If entities changed since the last conversion, the old
+    file(s) live at a different path and are never touched, silently orphaning
+    them inside the BIDS dataset. This finds every sibling file that belongs to
+    the OLD entity set (any suffix/extension, including split files and
+    sidecars such as .json/.tsv) and deletes them, but only ever within
+    `bids_root`, and never the file that was just (re)written.
+
+    Returns the list of removed file paths.
+    """
+    if not old_bids_path or not old_bids_name or pd.isna(old_bids_path) or pd.isna(old_bids_name):
+        return []
+
+    old_fpath = os.path.normpath(join(str(old_bids_path), str(old_bids_name)))
+    new_fpath_norm = os.path.normpath(str(new_fpath))
+    if old_fpath == new_fpath_norm:
+        return []  # output path/name unchanged, nothing stale
+
+    bids_root_norm = os.path.normpath(str(bids_root))
+
+    def _inside_root(path):
+        try:
+            return os.path.commonpath([bids_root_norm, os.path.normpath(path)]) == bids_root_norm
+        except ValueError:
+            return False  # e.g. different drives on Windows
+
+    if not _inside_root(old_fpath):
+        print(f"Skipping stale-output cleanup: {old_fpath} is outside BIDS root {bids_root_norm}")
+        return []
+
+    try:
+        old_entity_path = get_bids_path_from_fname(old_fpath, check=False)
+        old_entity_path.update(suffix=None, extension=None, split=None, check=False)
+        stale_candidates = [str(p.fpath) for p in old_entity_path.match(ignore_json=False)]
+    except Exception as e:
+        print(f"Could not resolve BIDS entities for stale output {old_fpath}, falling back to exact match: {e}")
+        stale_candidates = [old_fpath] if exists(old_fpath) else []
+
+    removed = []
+    for stale in stale_candidates:
+        stale_norm = os.path.normpath(stale)
+        if stale_norm == new_fpath_norm or not _inside_root(stale_norm):
+            continue
+        try:
+            os.remove(stale_norm)
+            removed.append(stale_norm)
+            if verbose:
+                print(f"  Removed stale BIDS output: {stale_norm}")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"Could not remove stale BIDS output {stale_norm}: {e}")
+    return removed
+
+
 def bidsify(config: dict, conversion_table=None, conversion_file=None, force_scan: bool = False, verbose: bool = False, progress_callback=None):
     """
     Main function to convert raw MEG/EEG data to BIDS format.
@@ -45,7 +105,6 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
     path_BIDS = config.get('BIDS', '')
     calibration = config.get('Calibration', '')
     crosstalk = config.get('Crosstalk', '')
-    overwrite = config.get('overwrite', False)
     logfile = config.get('Logfile', '')
     participant_mapping = join(path_project, config.get('Participants_mapping_file', ''))
     logPath = setLogPath(config)
@@ -82,6 +141,12 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
 
     df = df.where(pd.notnull(df) & (df != ''), None)
 
+    # Only rows explicitly staged (via the "Stage Jobs" step) are processed. Staging
+    # is independent of 'status' so a staged row is always (re)processed/overwritten,
+    # regardless of whether it was previously 'run', 'processed', or 'error'.
+    df['_staged'] = df.apply(get_row_staged, axis=1)
+    process_mask = df['_staged']
+
     pmap = None
     if participant_mapping:
         try:
@@ -89,7 +154,7 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
         except Exception:
             print('Participant file not found, skipping')
 
-    unique_participants_sessions = df[['participant_to', 'session_to', 'datatype']].drop_duplicates()
+    unique_participants_sessions = df.loc[process_mask, ['participant_to', 'session_to', 'datatype']].drop_duplicates()
     for _, row in unique_participants_sessions.iterrows():
         participant_str = str(row['participant_to'])
         if len(participant_str) >= 4:
@@ -116,27 +181,22 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
         except Exception as e:
             print(f"Error writing calibration/crosstalk files: {e}")
 
-    deviants = df[df['status'] == 'check']
+    deviants = df[(df['status'] == 'check') & df['_staged']]
     if len(deviants) > 0:
         print("""
-              There are files marked "check" that require manual review before conversion
+              There are staged files marked "check" that require manual review before conversion
               
               Please modify in the editor.
               
               """)
-        df.to_csv(conversion_file, sep='\t', index=False)
+        df.drop(columns=['_staged']).to_csv(conversion_file, sep='\t', index=False)
         summary['total'] = len(df)
         summary['to_process'] = 0
         summary['initial_status_counts'] = df['status'].fillna('error').value_counts().to_dict()
         summary['final_status_counts'] = summary['initial_status_counts']
-        summary['message'] = 'Conversion blocked: files marked as check require manual review'
+        summary['message'] = 'Conversion blocked: staged files marked as check require manual review'
         _emit_progress({'stage': 'done', 'message': summary['message'], 'summary': summary})
         return summary
-
-    if overwrite:
-        process_mask = pd.Series([True] * len(df), index=df.index)
-    else:
-        process_mask = ~df['status'].isin(['processed', 'skip', 'missing'])
 
     df['status'] = df['status'].fillna('error')
     status_counts = df['status'].value_counts().to_dict()
@@ -163,10 +223,10 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
             error=status_counts.get('error', 0)
         )
     )
-    if not overwrite and n_files_to_process == 0:
-        print("No files marked 'run' to convert. Exiting bidsify process.")
+    if n_files_to_process == 0:
+        print("No staged files to convert. Exiting bidsify process.")
         summary['final_status_counts'] = status_counts
-        summary['message'] = "No files marked 'run' to convert"
+        summary['message'] = "No staged files to convert"
         _emit_progress({'stage': 'done', 'message': summary['message'], 'summary': summary})
         return summary
 
@@ -308,7 +368,27 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
                 bids_tsv = bids_path.copy().update(suffix='channels', extension='.tsv')
                 add_channel_parameters(bids_tsv, opm_tsv)
 
+            try:
+                removed_stale = _cleanup_stale_bids_output(
+                    old_bids_path=d.get('bids_path'),
+                    old_bids_name=d.get('bids_name'),
+                    new_fpath=str(bids_path.fpath),
+                    bids_root=path_BIDS,
+                    verbose=verbose,
+                )
+                if removed_stale:
+                    print(
+                        f"Reprocessed file changed output name/path; removed "
+                        f"{len(removed_stale)} stale output file(s) from previous conversion: "
+                        f"{', '.join(removed_stale)}"
+                    )
+            except Exception as e:
+                # A cleanup failure should never turn an otherwise-successful
+                # conversion into an error; just warn and keep going.
+                print(f"Warning: failed stale-output cleanup for {d.get('raw_name')}: {e}")
+
             df.at[i, 'status'] = 'processed'
+            df = _set_staged(df, i, False)
             processed_now += 1
             df = _record_processing_success(df, i)
             _emit_progress({
@@ -346,6 +426,7 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
                 recent_errors = recent_errors[-max_recent_errors:]
 
             df.at[i, 'status'] = 'error'
+            df = _set_staged(df, i, False)
             errors_now += 1
             _emit_progress({
                 'stage': 'file-error',
@@ -361,7 +442,7 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
         df.at[i, 'time_stamp'] = ts
         df.at[i, 'bids_path'] = dirname(bids_path)
         df.at[i, 'bids_name'] = basename(bids_path)
-        df.to_csv(conversion_file, sep='\t', index=False)
+        df.drop(columns=['_staged']).to_csv(conversion_file, sep='\t', index=False)
 
     pbar.close()
 
