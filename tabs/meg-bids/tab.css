@@ -440,6 +440,11 @@
 #megConversionTable th {
   cursor: pointer;
   user-select: none;
+  /* Override the shared .config-table thead tr:first-child uppercase rule
+     (index.html) - this table has a single header row with real column
+     names (Status, Participant, ...) that should keep their true casing,
+     not the group-header uppercase styling meant for MR/PET's 2-row tables. */
+  text-transform: none;
 }
 
 #megConversionTable th.sort-asc .sort-indicator::after {
