@@ -545,7 +545,12 @@
 
     // Update JSON display
     updateJsonDisplay: function() {
-      const jsonText = JSON.stringify(this.config, null, 2);
+      // Show exactly what saveConfigToFile() actually writes to disk.
+      // this.config also carries config_file, but that's internal UI/save-target
+      // state (which file to load/write) - not part of the file's own content -
+      // so it must not appear in this "Configuration JSON" preview either.
+      const { config_file, ...fileContents } = this.config;
+      const jsonText = JSON.stringify(fileContents, null, 2);
       const viewEl = document.getElementById('megJsonView');
       const editEl = document.getElementById('megJsonEdit');
       if (viewEl) viewEl.textContent = jsonText;
