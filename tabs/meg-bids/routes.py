@@ -22,6 +22,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 import constants as CONSTS
+import tab_assets
 
 # Import from refactored bidsify package
 from bidsify.simple import load_minimal_config, get_default_config, bidsify_simple
@@ -541,42 +542,6 @@ def _handle_get_report(h, body):
         h._send_json({"error": f"Failed to read report: {e}"})
 
 
-def _handle_get_static_js(h, params):
-    """Serve the meg-tab.js static file."""
-    js_path = os.path.join(_TAB_DIR, "meg-tab.js")
-    if not os.path.isfile(js_path):
-        h.send_error(404, "JavaScript file not found")
-        return
-    try:
-        with open(js_path, encoding="utf-8") as fh:
-            body = fh.read().encode("utf-8")
-        h.send_response(200)
-        h.send_header("Content-Type", "application/javascript; charset=utf-8")
-        h.send_header("Content-Length", str(len(body)))
-        h.end_headers()
-        h.wfile.write(body)
-    except Exception as e:
-        h.send_error(500, f"Failed to read JavaScript file: {e}")
-
-
-def _handle_get_static_css(h, params):
-    """Serve the tab.css static file."""
-    css_path = os.path.join(_TAB_DIR, "tab.css")
-    if not os.path.isfile(css_path):
-        h.send_error(404, "CSS file not found")
-        return
-    try:
-        with open(css_path, encoding="utf-8") as fh:
-            body = fh.read().encode("utf-8")
-        h.send_response(200)
-        h.send_header("Content-Type", "text/css; charset=utf-8")
-        h.send_header("Content-Length", str(len(body)))
-        h.end_headers()
-        h.wfile.write(body)
-    except Exception as e:
-        h.send_error(500, f"Failed to read CSS file: {e}")
-
-
 def _handle_save_config(h, body):
     """Save configuration file to project path."""
     config_data = body.get("config", {})
@@ -617,8 +582,11 @@ def register(get_routes, post_routes):
     get_routes[CONSTS.MEG_API_LOAD_CONFIG] = _handle_load_config
     get_routes[CONSTS.MEG_API_GET_CONVERSION_TABLE] = _handle_get_conversion_table
     get_routes[CONSTS.MEG_API_BIDSIFY_PROGRESS] = _handle_bidsify_progress
-    get_routes[CONSTS.MEG_ASSET_JS] = _handle_get_static_js
-    get_routes[CONSTS.MEG_ASSET_CSS] = _handle_get_static_css
+    tab_assets.register(
+        get_routes, _TAB_DIR,
+        css_route=CONSTS.MEG_ASSET_CSS, css_file="tab.css",
+        js_route=CONSTS.MEG_ASSET_JS, js_file="meg-tab.js",
+    )
 
     post_routes[CONSTS.MEG_API_SAVE_CONVERSION_TABLE] = _handle_save_conversion_table
     post_routes[CONSTS.MEG_API_LOAD_CONVERSION_TABLE] = _handle_load_conversion_table

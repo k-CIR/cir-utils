@@ -1,0 +1,2851 @@
+  const petBids = (() => {
+    let _token = null;
+    let _projectRoot = '';
+    let _petprepCurrentCommand = '';
+    let _petprepContainerFiles = [];
+    let _petprepRunPollTimer = null;
+
+    function _collapsePathSegments(path) {
+      const isAbs = path.startsWith('/');
+      const out = [];
+      for (const part of path.split('/')) {
+        if (!part || part === '.') continue;
+        if (part === '..') {
+          if (out.length && out[out.length - 1] !== '..') {
+            out.pop();
+          } else if (!isAbs) {
+            out.push('..');
+          }
+          continue;
+        }
+        out.push(part);
+      }
+      const joined = out.join('/');
+      if (isAbs) return '/' + joined;
+      return joined || '.';
+    }
+
+    function _normalizeDisplayPath(value) {
+      let path = String(value || '').trim().replace(/\\/g, '/');
+      const root = _collapsePathSegments(
+        String(_projectRoot || '').trim().replace(/\\/g, '/').replace(/\/+$/, '')
+      );
+      path = _collapsePathSegments(path);
+      if (root && path === root) {
+        return '';
+      }
+      if (root && path.startsWith(root + '/')) {
+        path = path.slice(root.length + 1);
+      }
+      while (path.startsWith('../')) {
+        path = path.slice(3);
+      }
+      while (path.startsWith('./')) {
+        path = path.slice(2);
+      }
+      return path;
+    }
+
+    function _normalizeRootPath(value) {
+      const raw = String(value || '').trim().replace(/\\/g, '/');
+      if (!raw) return '';
+      const collapsed = _collapsePathSegments(raw);
+      let result = raw.startsWith('/') && !collapsed.startsWith('/')
+        ? '/' + collapsed
+        : collapsed;
+      
+      // Security check: ensure result doesn't contain ".." (path traversal)
+      if (result.includes('/../') || result.endsWith('/..') || result === '..') {
+        console.warn('Path normalization produced unsafe result:', result, 'from:', raw);
+        return ''; // Return empty if path normalization fails
+      }
+      
+      return result;
+    }
+
+    function _addToken(url) {
+      if (!url || typeof url !== 'string') return url;
+      if (!url.startsWith('/')) return url;
+      if (url.includes('token=')) return url;
+
+      // Try all known token sources so requests keep working across tab reloads.
+      const urlToken = new URLSearchParams(window.location.search).get('token');
+      const globalToken = (typeof authToken !== 'undefined') ? authToken : null;
+      const token = _token || urlToken || globalToken;
+      if (!token) {
+        if (typeof addTokenToUrl === 'function') {
+          return addTokenToUrl(url);
+        }
+        return url;
+      }
+
+      return url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function escAttr(s) {
+      return esc(s).replace(/"/g, '&quot;');
+    }
+
+    function setCsvFeedback(message, type) {
+      const meta = document.getElementById('csv-meta');
+      if (!meta) return;
+
+      if (type === 'ok') {
+        meta.innerHTML = '<span class="t-ok">' + esc(message) + '</span>';
+        return;
+      }
+      if (type === 'err') {
+        meta.innerHTML = '<span class="t-err">' + esc(message) + '</span>';
+        return;
+      }
+
+      meta.textContent = message;
+    }
+
+    function _normalizeHeaderName(value) {
+      return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ');
+    }
+
+    function _buildHeaderIndexMap(headers) {
+      const map = new Map();
+      for (let i = 0; i < headers.length; i++) {
+        const key = _normalizeHeaderName(headers[i]);
+        if (key && !map.has(key)) {
+          map.set(key, i);
+        }
+      }
+      return map;
+    }
+
+    function _splitColumnList(value) {
+      return String(value || '')
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean);
+    }
+
+    function _buildSourceProjection(dataHeaders, dataRows, selectedColumns) {
+      const headerIndexMap = _buildHeaderIndexMap(dataHeaders || []);
+      const requested = (Array.isArray(selectedColumns) && selectedColumns.length)
+        ? selectedColumns
+        : ['subject', 'session'];
+      const selected = [];
+
+      for (const name of requested) {
+        const idx = headerIndexMap.get(_normalizeHeaderName(name));
+        if (idx === undefined) {
+          return { error: 'Source CSV must contain columns named ' + requested.join(', ') + '.' };
+        }
+        selected.push({ name, idx });
+      }
+
+      return {
+        headers: selected.map(item => item.name),
+        rows: (dataRows || []).map(row => selected.map(item => row[item.idx] || '')),
+      };
+    }
+
+    function _buildTargetFromSource(statusColumns, autoDetected) {
+      const columns = (statusColumns || []).map(c => String(c || '').trim()).filter(Boolean);
+      const headers = (currentCsv.headers || []).slice();
+      const rows = (currentCsv.rows || []).map(row => {
+        const next = (row || []).slice();
+        for (const col of columns) {
+          next.push(col === 'BIDS' ? 'to do' : '');
+        }
+        return next;
+      });
+
+      const autoList = Array.isArray(autoDetected) ? autoDetected : [];
+      const outputHeaders = headers.concat(columns);
+      const headerIndex = new Map(outputHeaders.map((header, index) => [String(header || '').toLowerCase(), index]));
+      const bidsIdx = headerIndex.get('bids');
+      const petprepIdx = headerIndex.get('petprep ran');
+      const qcIdxs = [
+        headerIndex.get('qc motion correction'),
+        headerIndex.get('qc coregistration'),
+        headerIndex.get('qc mri delineation'),
+        headerIndex.get('qc freesurfer'),
+      ].filter(index => typeof index === 'number');
+
+      for (const entry of autoList) {
+        const rowIndex = Number(entry && entry.row_index);
+        if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= rows.length) continue;
+        const row = rows[rowIndex];
+
+        if (bidsIdx != null) {
+          row[bidsIdx] = entry.bids_done ? 'done' : 'to do';
+        }
+
+        if (petprepIdx != null) {
+          row[petprepIdx] = entry.petprep_done ? 'done' : '';
+        }
+
+        if (entry.petprep_done) {
+          for (const idx of qcIdxs) {
+            row[idx] = 'to do';
+          }
+        }
+      }
+
+      return {
+        headers: outputHeaders,
+        rows,
+      };
+    }
+
+    function deriveTargetPath(sourcePath) {
+      const s = String(sourcePath || '').trim();
+      if (!s) return 'BIDS/derivatives/progress.csv';
+
+      const normalized = s.replace(/\\/g, '/');
+      const lastSlash = normalized.lastIndexOf('/');
+      if (lastSlash >= 0) {
+        return normalized.slice(0, lastSlash + 1) + 'progress.csv';
+      }
+      return 'BIDS/derivatives/progress.csv';
+    }
+
+    function isReadOnly() {
+      const toggle = document.getElementById('read-only-toggle');
+      return !toggle || toggle.checked;
+    }
+
+    const defaultSelectedColumns = ['sub_id', 'session_number', 'bmic_radioligande_factor'];
+    const trackingColumns = [
+      'BIDS',
+      'PETPrep ran',
+      'QC motion correction',
+      'QC coregistration',
+      'QC MRI delineation',
+      'QC Freesurfer',
+    ];
+    const WORKFLOW_ALIASES = {
+      bids: ['BIDS', 'BIDSified', 'BIDSification'],
+      petprep: ['PETPrep ran', 'Run PETPrep', 'PETPrep'],
+      qcMotion: ['QC motion correction', 'Motion correction'],
+      qcCoreg: ['QC coregistration', 'Coregistration'],
+      qcMri: ['QC MRI delineation', 'MRI delineation'],
+      qcFs: ['QC Freesurfer', 'Freesurfer'],
+    };
+
+    let activeSource = null;
+    let currentCsv = { path: '', headers: [], rows: [], writableColumns: [], mode: 'source' };
+    let sourceAutoDetected = [];
+    let tableRows = [];
+    let tableState = [];
+    let _helperDebug = {};
+    const stateMap = new Map();
+    let _petHelperRunCompleted = false;
+    let _bidsDiscoveredSessions = [];
+    let _recodeTimer = null;
+    const _SESSION_COLORS = ['#9cdcfe', '#4ec9b0', '#dcdcaa', '#ce9178', '#c586c0', '#569cd6', '#4fc1ff', '#b5cea8'];
+
+    function _sessionColor(idx) {
+      return _SESSION_COLORS[idx % _SESSION_COLORS.length];
+    }
+
+    function normalizeHeaderName(value) {
+      return String(value || '')
+        .toLowerCase()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function findHeaderIndexByAliases(headers, aliases) {
+      const normalizedAliases = (aliases || []).map(normalizeHeaderName);
+      for (let i = 0; i < headers.length; i++) {
+        const normalizedHeader = normalizeHeaderName(headers[i]);
+        if (normalizedAliases.includes(normalizedHeader)) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function headerMatchesAliases(headerName, aliases) {
+      return findHeaderIndexByAliases([headerName], aliases) === 0;
+    }
+
+    function getWorkflowColumnIndexes() {
+      const headers = currentCsv.headers || [];
+      return {
+        bids: findHeaderIndexByAliases(headers, WORKFLOW_ALIASES.bids),
+        petprep: findHeaderIndexByAliases(headers, WORKFLOW_ALIASES.petprep),
+        qc: [
+          findHeaderIndexByAliases(headers, WORKFLOW_ALIASES.qcMotion),
+          findHeaderIndexByAliases(headers, WORKFLOW_ALIASES.qcCoreg),
+          findHeaderIndexByAliases(headers, WORKFLOW_ALIASES.qcMri),
+          findHeaderIndexByAliases(headers, WORKFLOW_ALIASES.qcFs),
+        ].filter(i => i >= 0),
+      };
+    }
+
+    function ensureTrackingColumns(headers, rows) {
+      const updatedHeaders = (headers || []).slice();
+      const updatedRows = (rows || []).map(r => (r || []).slice());
+      const added = [];
+      const addedDefaults = [];
+
+      for (const col of trackingColumns) {
+        const aliases = col === 'BIDS'
+          ? WORKFLOW_ALIASES.bids
+          : (col === 'PETPrep ran'
+            ? WORKFLOW_ALIASES.petprep
+            : [col]);
+
+        if (findHeaderIndexByAliases(updatedHeaders, aliases) >= 0) continue;
+        updatedHeaders.push(col);
+        added.push(col);
+        addedDefaults.push(col === 'BIDS' ? 'to do' : '');
+      }
+
+      if (added.length) {
+        for (const row of updatedRows) {
+          for (let i = 0; i < addedDefaults.length; i++) {
+            row.push(addedDefaults[i]);
+          }
+        }
+      }
+
+      return { headers: updatedHeaders, rows: updatedRows, added };
+    }
+
+    function normalizeStatus(value) {
+      const v = String(value || '').toLowerCase().trim();
+      if (!v) return '';
+      if (v === 'not done' || v === 'todo' || v === 'to-do') return 'to do';
+      if (v === 'done') return 'done';
+      if (v === 'approved') return 'approved';
+      if (v === 'denied') return 'denied';
+      return '';
+    }
+
+    function isBidsColumn(header) {
+      return headerMatchesAliases(header, WORKFLOW_ALIASES.bids);
+    }
+
+    function isPetprepColumn(header) {
+      return headerMatchesAliases(header, WORKFLOW_ALIASES.petprep);
+    }
+
+    function isQcColumn(header) {
+      return headerMatchesAliases(header, WORKFLOW_ALIASES.qcMotion)
+        || headerMatchesAliases(header, WORKFLOW_ALIASES.qcCoreg)
+        || headerMatchesAliases(header, WORKFLOW_ALIASES.qcMri)
+        || headerMatchesAliases(header, WORKFLOW_ALIASES.qcFs);
+    }
+
+    function getRowBidsStatus(row) {
+      const workflow = getWorkflowColumnIndexes();
+      if (workflow.bids < 0) return '';
+      return normalizeStatus(row[workflow.bids] || '');
+    }
+
+    function getRowPetprepStatus(row) {
+      const workflow = getWorkflowColumnIndexes();
+      if (workflow.petprep < 0) return '';
+      return normalizeStatus(row[workflow.petprep] || '');
+    }
+
+    function isCellVisible(header, row) {
+      if (isBidsColumn(header)) return true;
+      if (isPetprepColumn(header)) return true;
+      if (isQcColumn(header)) {
+        return getRowPetprepStatus(row) === 'done';
+      }
+      return true;
+    }
+
+    function isCellEditableAndVisible(header, row) {
+      if (isBidsColumn(header)) return true;
+      if (isPetprepColumn(header)) {
+        return getRowBidsStatus(row) === 'done';
+      }
+      if (isQcColumn(header)) {
+        return getRowPetprepStatus(row) === 'done';
+      }
+      return true;
+    }
+
+    function isStatusColumn(header) {
+      return isBidsColumn(header) || isPetprepColumn(header) || isQcColumn(header);
+    }
+
+    function applyStatusDependenciesForRow(row, changedHeader, selectedStatus) {
+      const changed = [];
+      const workflow = getWorkflowColumnIndexes();
+      const isBidsChange = headerMatchesAliases(changedHeader, WORKFLOW_ALIASES.bids);
+      const isPetprepChange = headerMatchesAliases(changedHeader, WORKFLOW_ALIASES.petprep);
+
+      if (isBidsChange && selectedStatus === 'done') {
+        const petprepIdx = workflow.petprep;
+        if (petprepIdx >= 0) {
+          const current = normalizeStatus(row[petprepIdx]);
+          if (current === '') {
+            row[petprepIdx] = 'to do';
+            changed.push(currentCsv.headers[petprepIdx]);
+          }
+        }
+      }
+
+      if (isPetprepChange && selectedStatus === 'done') {
+        for (const qcIdx of workflow.qc) {
+          const current = normalizeStatus(row[qcIdx]);
+          if (current === '') {
+            row[qcIdx] = 'to do';
+            changed.push(currentCsv.headers[qcIdx]);
+          }
+        }
+      }
+
+      return changed;
+    }
+
+    function applyAutoDetectedStatuses(autoDetected) {
+      if (!Array.isArray(autoDetected) || !autoDetected.length) {
+        return { bids: 0, petprep: 0 };
+      }
+
+      let bidsCount = 0;
+      let petprepCount = 0;
+      const workflow = getWorkflowColumnIndexes();
+      const bidsIdx = workflow.bids;
+      const petprepIdx = workflow.petprep;
+
+      for (const entry of autoDetected) {
+        const rowIndex = Number(entry && entry.row_index);
+        if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= currentCsv.rows.length) continue;
+        const row = currentCsv.rows[rowIndex];
+
+        if (entry.bids_done && bidsIdx >= 0) {
+          const prev = normalizeStatus(row[bidsIdx]);
+          if (prev !== 'done' && prev !== 'approved') {
+            row[bidsIdx] = 'done';
+            bidsCount += 1;
+            applyStatusDependenciesForRow(row, currentCsv.headers[bidsIdx], 'done');
+          }
+        }
+
+        if (entry.petprep_done && petprepIdx >= 0) {
+          const prev = normalizeStatus(row[petprepIdx]);
+          if (prev !== 'done' && prev !== 'approved') {
+            row[petprepIdx] = 'done';
+            petprepCount += 1;
+            applyStatusDependenciesForRow(row, currentCsv.headers[petprepIdx], 'done');
+          }
+        }
+      }
+
+      return { bids: bidsCount, petprep: petprepCount };
+    }
+
+    function applyDefaultWorkflowValues() {
+      const workflow = getWorkflowColumnIndexes();
+      const bidsIdx = workflow.bids;
+      if (bidsIdx < 0) return 0;
+
+      let updated = 0;
+      for (const row of currentCsv.rows) {
+        if (bidsIdx >= row.length) {
+          row.length = bidsIdx + 1;
+        }
+        const current = normalizeStatus(row[bidsIdx]);
+        if (current === '') {
+          row[bidsIdx] = 'to do';
+          updated += 1;
+        }
+      }
+      return updated;
+    }
+
+    function _stateKey(row) {
+      return String(row.series_number) + '|' + row.series_description
+        + '|' + (row.protocol_name || '') + '|' + (row.modality || '')
+        + '|' + (row.image_type || '') + '|' + (row.radiopharmaceutical || '');
+    }
+
+    const SUFFIX_OPTS = {
+      pet: ['pet'],
+      ct:  ['ct'],
+    };
+
+    function switchSubTab(name) {
+      document.querySelectorAll('#pet-bids-subtab-bar .tab-btn').forEach(b =>
+        b.classList.toggle('active', b.id === 'pet-subtab-' + name)
+      );
+      document.querySelectorAll('#pet-tab-overview, #pet-tab-raw, #pet-tab-editor, #pet-tab-makebids, #pet-tab-petprep, #pet-tab-qc').forEach(p =>
+        p.classList.remove('active')
+      );
+      document.getElementById('pet-tab-' + name).classList.add('active');
+      if (name === 'editor') {
+        loadConfigEditor();
+      }
+    }
+
+    async function initializeAndLoad() {
+      const overviewInput = document.getElementById('overview-path');
+      const rawInput = document.getElementById('raw-path');
+      if (overviewInput && !overviewInput.value.trim()) {
+        overviewInput.value = 'BIDS/derivatives/petprep';
+      }
+      if (rawInput && !rawInput.value.trim()) {
+        rawInput.value = 'raw/pet';
+      }
+      try {
+        const defaultSelected = ['sub_id', 'session_number', 'bmic_radioligande_factor'];
+        const defaultTracking = [
+          'BIDS',
+          'PETPrep ran',
+          'QC motion correction',
+          'QC coregistration',
+          'QC MRI delineation',
+          'QC Freesurfer',
+        ];
+
+        // Safely set values for elements that exist
+        const csvColumnsEl = document.getElementById('csv-columns');
+        if (csvColumnsEl) {
+          csvColumnsEl.value = defaultSelected.join(', ');
+        }
+        const statusColumnNamesEl = document.getElementById('status-column-names');
+        if (statusColumnNamesEl) {
+          statusColumnNamesEl.value = defaultTracking.join(', ');
+        }
+
+        const petCfgResp = await fetch(_addToken('/pet-get-config'));
+        if (petCfgResp.status === 401 && window._handleAuthError) {
+          window._handleAuthError();
+          return;
+        }
+        if (!petCfgResp.ok) {
+          throw new Error('Failed to load PET defaults (HTTP ' + petCfgResp.status + ')');
+        }
+        const petCfg = await petCfgResp.json();
+        _projectRoot = _normalizeRootPath(petCfg.project_root || '');
+        
+        // Validate that project root was loaded correctly
+        console.log('PET tab: project_root from server:', petCfg.project_root);
+        console.log('PET tab: _projectRoot after normalization:', _projectRoot);
+        
+        if (!_projectRoot || _projectRoot.includes('..')) {
+          throw new Error('Project root not properly detected: ' + _projectRoot);
+        }
+        
+        // Set path static text for all elements that exist
+        const pathElements = [
+          'pet-path-static',
+          'raw-path-static',
+          'pet-bids-root-static',
+          'pet-bids-out-static',
+          'pet-bids-cfg-root-static',
+          'petprep-bids-root-static',
+          'petprep-out-root-static',
+          'petprep-license-root-static',
+          'petprep-tempflow-root-static',
+        ];
+        for (const id of pathElements) {
+          const el = document.getElementById(id);
+          if (el) {
+            el.textContent = _projectRoot;
+          }
+        }
+        
+        if (petCfg.warning) {
+          const w = document.getElementById('pet-raw-path-warn');
+          if (w) {
+            w.textContent = '⚠ ' + petCfg.warning;
+            w.style.display = '';
+          }
+        }
+        if (petCfg.default_path) {
+          const rawDisplayPath = _normalizeDisplayPath(petCfg.default_path);
+          const rawPathEl = document.getElementById('raw-path');
+          if (rawPathEl) {
+            rawPathEl.value = rawDisplayPath;
+          }
+        }
+        if (petCfg.html_default_path) {
+          const htmlDisplayPath = _normalizeDisplayPath(petCfg.html_default_path);
+          const overviewPathEl = document.getElementById('overview-path');
+          if (overviewPathEl) {
+            overviewPathEl.value = htmlDisplayPath;
+          }
+        }
+        if (petCfg.html_warning) {
+          const w = document.getElementById('pet-path-warn');
+          if (w) {
+            w.textContent = '⚠ ' + petCfg.html_warning;
+            w.style.display = '';
+          }
+        }
+
+        const petprepDefaults = {
+          bids: 'BIDS',
+          out: 'BIDS/derivatives/petprep',
+          license: 'license.txt',
+          tempflow: 'utils/temp_cach',
+        };
+        const bidsPathEl = document.getElementById('petprep-bids-path');
+        if (bidsPathEl) bidsPathEl.value = petprepDefaults.bids;
+        const outPathEl = document.getElementById('petprep-out-path');
+        if (outPathEl) outPathEl.value = petprepDefaults.out;
+        const licensePathEl = document.getElementById('petprep-license-path');
+        if (licensePathEl) licensePathEl.value = petprepDefaults.license;
+        const tempflowPathEl = document.getElementById('petprep-tempflow-path');
+        if (tempflowPathEl) tempflowPathEl.value = petprepDefaults.tempflow;
+
+        _loadPetprepContainerFiles();
+
+        const csvResp = await fetch(_addToken('/get-csv-config'));
+        if (csvResp.status === 401 && window._handleAuthError) {
+          window._handleAuthError();
+          return;
+        }
+        if (!csvResp.ok) {
+          throw new Error('Failed to load CSV defaults (HTTP ' + csvResp.status + ')');
+        }
+        const csvCfg = await csvResp.json();
+        const csvRoot = _normalizeRootPath(csvCfg.project_root || '');
+        
+        // Set CSV path static elements if they exist
+        const csvPathStaticEl = document.getElementById('csv-path-static');
+        if (csvPathStaticEl) {
+          csvPathStaticEl.textContent = csvRoot;
+        }
+        const targetPathStaticEl = document.getElementById('target-path-static');
+        if (targetPathStaticEl) {
+          targetPathStaticEl.textContent = csvRoot;
+        }
+        
+        if (csvCfg.warning) {
+          const w = document.getElementById('csv-warn');
+          if (w) {
+            w.textContent = '⚠ ' + csvCfg.warning;
+            w.style.display = '';
+          }
+        }
+        if (csvCfg.default_csv) {
+          const csvPathEl = document.getElementById('csv-path');
+          if (csvPathEl) {
+            csvPathEl.value = csvCfg.default_csv;
+          }
+          const targetFilePathEl = document.getElementById('target-file-path');
+          if (targetFilePathEl) {
+            targetFilePathEl.value = csvCfg.default_csv.replace(/[^/]*$/, 'progress.csv');
+          }
+        }
+        
+        // Only call renderCsvFileList if it exists
+        if (typeof renderCsvFileList === 'function') {
+          renderCsvFileList(csvCfg.csv_files || []);
+        }
+      } catch (err) {
+        const msg = (err && err.message) ? err.message : 'Failed to load PET tab defaults.';
+        const warnEls = [
+          document.getElementById('pet-path-warn'),
+          document.getElementById('pet-raw-path-warn'),
+          document.getElementById('csv-warn'),
+        ].filter(Boolean);
+        for (const el of warnEls) {
+          el.textContent = '⚠ ' + msg;
+          el.style.display = '';
+        }
+        console.error('PET tab initialization failed:', err);
+      }
+    }
+
+    async function loadHelperSummary(prePopulate) {
+      tableRows.forEach((row, i) =>
+        stateMap.set(_stateKey(row), JSON.parse(JSON.stringify(tableState[i])))
+      );
+      try {
+        const resp = await fetch(_addToken('/pet-get-helper-summary'));
+        if (!resp.ok) {
+          const section = document.getElementById('pet-config-builder-section');
+          const statusEl = document.getElementById('pet-generate-status');
+          if (_petHelperRunCompleted) {
+            section.style.display = '';
+            statusEl.innerHTML = '<span class="t-err">Failed to load PET helper summary (HTTP ' + resp.status + ').</span>';
+          }
+          return;
+        }
+        const data = await resp.json();
+        _helperDebug = data.debug || {};
+        tableRows = data.rows || [];
+        tableState = tableRows.map(row => {
+          const saved = stateMap.get(_stateKey(row));
+          return saved || {
+            selected: { series_number: false, series_description: false, protocol_name: false, modality: false, image_type: false, radiopharmaceutical: false },
+            datatype: 'pet', trc: '', rec: '', run: '', suffix: 'pet', other_suffix: ''
+          };
+        });
+
+        if (prePopulate) {
+          const cfgResp = await fetch(_addToken('/pet-get-bids-config'));
+          if (cfgResp.ok) {
+            const cfgData = await cfgResp.json();
+            if (cfgData.config) _prePopulateFromConfig(cfgData.config);
+          }
+        }
+        renderConfigTable();
+      } catch (e) {
+        console.error('Failed to load PET helper summary:', e);
+        const section = document.getElementById('pet-config-builder-section');
+        const statusEl = document.getElementById('pet-generate-status');
+        if (_petHelperRunCompleted) {
+          section.style.display = '';
+          statusEl.innerHTML = '<span class="t-err">Failed to read PET helper output.</span>';
+        }
+      }
+    }
+
+    function _prePopulateFromConfig(configData) {
+      if (!configData || !Array.isArray(configData.descriptions)) return;
+      for (const desc of configData.descriptions) {
+        const criteria = desc.criteria || {};
+        if (!Object.keys(criteria).length) continue;
+        const idx = tableRows.findIndex(row => {
+          if ('SeriesDescription' in criteria && criteria.SeriesDescription !== row.series_description) return false;
+          if ('SeriesNumber' in criteria && Number(criteria.SeriesNumber) !== row.series_number) return false;
+          if ('ProtocolName' in criteria && criteria.ProtocolName !== row.protocol_name) return false;
+          if ('Modality' in criteria && criteria.Modality !== row.modality) return false;
+          if ('Radiopharmaceutical' in criteria && criteria.Radiopharmaceutical !== row.radiopharmaceutical) return false;
+          if ('ImageType' in criteria) {
+            const rowList = (row.image_type || '').split(',').map(x => x.trim()).filter(Boolean);
+            const criList = Array.isArray(criteria.ImageType) ? criteria.ImageType : [];
+            if (criList.some(v => !rowList.includes(v))) return false;
+          }
+          return true;
+        });
+        if (idx < 0) continue;
+        const s = tableState[idx];
+        const ce = Array.isArray(desc.custom_entities) ? desc.custom_entities : [];
+        const sc = desc.sidecar_changes || {};
+
+        if ('SeriesDescription' in criteria) s.selected.series_description = true;
+        if ('SeriesNumber' in criteria) s.selected.series_number = true;
+        if ('ProtocolName' in criteria) s.selected.protocol_name = true;
+        if ('Modality' in criteria) s.selected.modality = true;
+        if ('ImageType' in criteria) s.selected.image_type = true;
+        if ('Radiopharmaceutical' in criteria) s.selected.radiopharmaceutical = true;
+        s.datatype = desc.datatype || '';
+
+        const knownSuffixes = SUFFIX_OPTS[s.datatype] || [];
+        if (knownSuffixes.includes(desc.suffix)) {
+          s.suffix = desc.suffix || '';
+          s.other_suffix = '';
+        } else if (desc.suffix) {
+          s.suffix = '';
+          s.other_suffix = desc.suffix;
+        } else {
+          s.suffix = '';
+          s.other_suffix = '';
+        }
+
+        const trcEnt = ce.find(e => e.startsWith('trc-'));
+        const recEnt = ce.find(e => e.startsWith('rec-'));
+        const runEnt = ce.find(e => e.startsWith('run-'));
+        s.trc = trcEnt ? trcEnt.slice(4) : '';
+        s.rec = recEnt ? recEnt.slice(4) : '';
+        s.run = runEnt ? runEnt.slice(4) : '';
+      }
+    }
+
+    function renderConfigTable() {
+      const section = document.getElementById('pet-config-builder-section');
+      const container = document.getElementById('pet-config-table-container');
+      const warnEl = document.getElementById('pet-config-dup-warn');
+      if (!tableRows.length) {
+        if (_petHelperRunCompleted) {
+          section.style.display = '';
+          container.innerHTML = '<div style="padding:0.8rem 0; color:#d7ba7d;">No PET helper rows found for this run. Verify the selected path contains PET/CT DICOM data.</div>';
+          warnEl.style.display = 'none';
+          const statusEl = document.getElementById('pet-generate-status');
+          const preview = Array.isArray(_helperDebug.helper_files_preview) ? _helperDebug.helper_files_preview.join(', ') : '';
+          const niiPreview = Array.isArray(_helperDebug.helper_nii_files_preview) ? _helperDebug.helper_nii_files_preview.join(', ') : '';
+          statusEl.innerHTML = '<span class="t-err">No PET rows detected. Helper JSON files seen: '
+            + esc(String(_helperDebug.helper_file_count ?? 0))
+            + (preview ? ' [' + esc(preview) + ']' : '')
+            + '. Helper NIfTI files seen: '
+            + esc(String(_helperDebug.helper_nii_file_count ?? 0))
+            + (niiPreview ? ' [' + esc(niiPreview) + ']' : '')
+            + '.</span>';
+          return;
+        }
+        section.style.display = 'none';
+        return;
+      }
+      section.style.display = '';
+
+      const hasDups = tableRows.some(r => r.duplicate_count > 0);
+      warnEl.textContent = hasDups
+        ? '⚠ Some series appear multiple times. One representative row is shown per unique combination of input fields.'
+        : '';
+      warnEl.style.display = hasDups ? '' : 'none';
+
+      const dtypes = ['pet', 'ct'];
+      let html = '<table class="config-table"><thead><tr>'
+        + '<th colspan="6">Input</th>'
+        + '<th colspan="6" class="col-output"><strong>Output</strong></th>'
+        + '</tr><tr>'
+        + '<th>Series number</th><th>Series description</th><th>Protocol name</th><th>Modality</th><th>Image type</th><th>Radiopharmaceutical</th>'
+        + '<th class="col-output"><strong>Data type <span style="color:#f48771">*</span></strong></th>'
+        + '<th>Tracer (trc)</th><th>Reconstruction (rec)</th><th>Run</th>'
+        + '<th><strong>Suffix <span style="color:#f48771">*</span></strong></th><th>Other suffix</th>'
+        + '</tr></thead><tbody>';
+
+      tableRows.forEach((row, i) => {
+        const s = tableState[i];
+        const dupMark = row.duplicate_count > 0 ? ' ⚠' : '';
+        const dtypeOpts = dtypes.map(v =>
+          '<option value="' + v + '"' + (s.datatype === v ? ' selected' : '') + '>' + v + '</option>'
+        ).join('');
+        const suffixOpts = (SUFFIX_OPTS[s.datatype] || []).map(v =>
+          '<option value="' + v + '"' + (s.suffix === v ? ' selected' : '') + '>' + v + '</option>'
+        ).join('');
+
+        html += '<tr>'
+          + '<td class="input-cell' + (s.selected.series_number ? ' cell-selected' : '') + '" onclick="petBids.toggleCell(' + i + ',\'series_number\')">' + esc(String(row.series_number ?? '')) + '</td>'
+          + '<td class="input-cell' + (s.selected.series_description ? ' cell-selected' : '') + '" onclick="petBids.toggleCell(' + i + ',\'series_description\')">' + esc(row.series_description) + dupMark + '</td>'
+          + '<td class="input-cell' + (s.selected.protocol_name ? ' cell-selected' : '') + '" onclick="petBids.toggleCell(' + i + ',\'protocol_name\')">' + esc(row.protocol_name || '') + '</td>'
+          + '<td class="input-cell' + (s.selected.modality ? ' cell-selected' : '') + '" onclick="petBids.toggleCell(' + i + ',\'modality\')">' + esc(row.modality || '') + '</td>'
+          + '<td class="input-cell' + (s.selected.image_type ? ' cell-selected' : '') + '" onclick="petBids.toggleCell(' + i + ',\'image_type\')">' + esc(row.image_type || '') + '</td>'
+          + '<td class="input-cell' + (s.selected.radiopharmaceutical ? ' cell-selected' : '') + '" onclick="petBids.toggleCell(' + i + ',\'radiopharmaceutical\')">' + esc(row.radiopharmaceutical || '') + '</td>'
+          + '<td class="col-output"><select class="tbl-select" onchange="petBids.updateDatatype(' + i + ',this.value)"><option value="">--</option>' + dtypeOpts + '</select></td>'
+          + '<td><input class="tbl-input" type="text" value="' + escAttr(s.trc) + '" placeholder="(optional)" oninput="petBids.updateState(' + i + ',\'trc\',this.value)"></td>'
+          + '<td><input class="tbl-input" type="text" value="' + escAttr(s.rec) + '" placeholder="(optional)" oninput="petBids.updateState(' + i + ',\'rec\',this.value)"></td>'
+          + '<td><input class="tbl-input" type="text" value="' + escAttr(s.run) + '" placeholder="(optional)" oninput="petBids.updateState(' + i + ',\'run\',this.value)"></td>'
+          + '<td><select class="tbl-select" onchange="petBids.updateSuffix(' + i + ',this.value)"><option value="">--</option>' + suffixOpts + '</select></td>'
+          + '<td><input class="tbl-input" type="text" value="' + escAttr(s.other_suffix || '') + '" placeholder="(optional)" oninput="petBids.updateOtherSuffix(' + i + ',this.value)"></td>'
+          + '</tr>';
+      });
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function toggleCell(rowIdx, field) {
+      tableState[rowIdx].selected[field] = !tableState[rowIdx].selected[field];
+      const tbody = document.querySelector('#pet-config-table-container .config-table tbody');
+      if (!tbody) return;
+      const colIdx = { series_number: 0, series_description: 1, protocol_name: 2, modality: 3, image_type: 4, radiopharmaceutical: 5 }[field] ?? 0;
+      tbody.rows[rowIdx].cells[colIdx].classList.toggle('cell-selected', tableState[rowIdx].selected[field]);
+    }
+
+    function updateState(rowIdx, field, value) { tableState[rowIdx][field] = value; }
+
+    function updateDatatype(rowIdx, value) {
+      tableState[rowIdx].datatype = value;
+      tableState[rowIdx].suffix = '';
+      tableState[rowIdx].other_suffix = '';
+      const tbody = document.querySelector('#pet-config-table-container .config-table tbody');
+      if (!tbody) return;
+      const row = tbody.rows[rowIdx];
+      const opts = (SUFFIX_OPTS[value] || []).map(v => '<option value="' + v + '">' + v + '</option>').join('');
+      const sel = row.cells[10].querySelector('select');
+      if (sel) sel.innerHTML = '<option value="">--</option>' + opts;
+      const other = row.cells[11].querySelector('input');
+      if (other) other.value = '';
+    }
+
+    function updateSuffix(rowIdx, value) {
+      tableState[rowIdx].suffix = value;
+      tableState[rowIdx].other_suffix = '';
+      const tbody = document.querySelector('#pet-config-table-container .config-table tbody');
+      if (!tbody) return;
+      const other = tbody.rows[rowIdx].cells[11].querySelector('input');
+      if (other) other.value = '';
+    }
+
+    function updateOtherSuffix(rowIdx, value) {
+      tableState[rowIdx].other_suffix = value;
+      if (value.trim()) {
+        tableState[rowIdx].suffix = '';
+        const tbody = document.querySelector('#pet-config-table-container .config-table tbody');
+        if (!tbody) return;
+        const sel = tbody.rows[rowIdx].cells[10].querySelector('select');
+        if (sel) sel.value = '';
+      }
+    }
+
+    function _buildDescriptions() {
+      const descriptions = [];
+      tableRows.forEach((row, i) => {
+        const s = tableState[i];
+        if (!(s.selected.series_number || s.selected.series_description || s.selected.protocol_name || s.selected.modality || s.selected.image_type || s.selected.radiopharmaceutical)) return;
+        const effectiveSuffix = (s.other_suffix || '').trim() || s.suffix;
+        if (!s.datatype || !effectiveSuffix) return;
+
+        const d = { datatype: s.datatype, suffix: effectiveSuffix };
+        const ce = [];
+        if (s.trc.trim()) ce.push('trc-' + s.trc.trim());
+        if (s.rec.trim()) ce.push('rec-' + s.rec.trim());
+        if (s.run.trim()) ce.push('run-' + s.run.trim());
+        if (ce.length) d.custom_entities = ce;
+
+        d.criteria = {};
+        if (s.selected.series_description) d.criteria.SeriesDescription = row.series_description;
+        if (s.selected.series_number) d.criteria.SeriesNumber = row.series_number;
+        if (s.selected.protocol_name) d.criteria.ProtocolName = row.protocol_name;
+        if (s.selected.modality) d.criteria.Modality = row.modality;
+        if (s.selected.image_type) d.criteria.ImageType = (row.image_type || '').split(',').map(v => v.trim()).filter(Boolean);
+        if (s.selected.radiopharmaceutical) d.criteria.Radiopharmaceutical = row.radiopharmaceutical;
+
+        descriptions.push(d);
+      });
+      return descriptions;
+    }
+
+    async function _doSaveConfig(payload) {
+      const resp = await fetch(_addToken('/pet-save-bids-config'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return !!(await resp.json()).ok;
+    }
+
+    async function generateConfig() {
+      const statusEl = document.getElementById('pet-generate-status');
+      const descriptions = _buildDescriptions();
+      if (!descriptions.length) {
+        statusEl.innerHTML = '<span class="t-err">No rows ready: each needs at least one selected input cell, a data type, and a suffix.</span>';
+        return;
+      }
+      try {
+        const check = await fetch(_addToken('/pet-get-bids-config'));
+        if (check.ok) {
+          const cd = await check.json();
+          if (cd.config !== null) {
+            const confirmed = confirm('dcm2bids_config_pet.json already exists.\n\nOverwrite it with '
+              + descriptions.length + ' description' + (descriptions.length !== 1 ? 's' : '') + '?');
+            if (!confirmed) { statusEl.textContent = ''; return; }
+          }
+        }
+      } catch { /* fall through */ }
+      try {
+        const ok = await _doSaveConfig({ descriptions });
+        statusEl.innerHTML = ok
+          ? '<span class="t-ok">✓ Saved dcm2bids_config_pet.json (' + descriptions.length + ' description' + (descriptions.length !== 1 ? 's' : '') + ')</span>'
+          : '<span class="t-err">✗ Server error saving config.</span>';
+      } catch {
+        statusEl.innerHTML = '<span class="t-err">✗ Failed to reach server.</span>';
+      }
+    }
+
+    async function appendToConfig() {
+      const statusEl = document.getElementById('pet-generate-status');
+      const newDescs = _buildDescriptions();
+      if (!newDescs.length) {
+        statusEl.innerHTML = '<span class="t-err">No rows ready: each needs at least one selected input cell, a data type, and a suffix.</span>';
+        return;
+      }
+      let existing = [];
+      try {
+        const resp = await fetch(_addToken('/pet-get-bids-config'));
+        if (resp.ok) {
+          const d = await resp.json();
+          if (d.config && Array.isArray(d.config.descriptions)) existing = d.config.descriptions;
+        }
+      } catch { /* start fresh */ }
+      const merged = existing.concat(newDescs);
+      try {
+        const ok = await _doSaveConfig({ descriptions: merged });
+        statusEl.innerHTML = ok
+          ? '<span class="t-ok">✓ Appended ' + newDescs.length + ' description' + (newDescs.length !== 1 ? 's' : '') + ' (total: ' + merged.length + ')</span>'
+          : '<span class="t-err">✗ Server error saving config.</span>';
+      } catch {
+        statusEl.innerHTML = '<span class="t-err">✗ Failed to reach server.</span>';
+      }
+    }
+
+    async function loadConfigToTable() {
+      const statusEl = document.getElementById('pet-generate-status');
+      try {
+        const resp = await fetch(_addToken('/pet-get-bids-config'));
+        if (resp.status === 401 && window._handleAuthError) { window._handleAuthError(); return; }
+        if (!resp.ok) {
+          statusEl.innerHTML = '<span class="t-err">No config file found.</span>';
+          return;
+        }
+        const data = await resp.json();
+        if (!data.config) {
+          statusEl.innerHTML = '<span class="t-err">No config file found.</span>';
+          return;
+        }
+        tableState = tableRows.map(() => ({
+          selected: { series_number: false, series_description: false, protocol_name: false, modality: false, image_type: false, radiopharmaceutical: false },
+          datatype: 'pet', trc: '', rec: '', run: '', suffix: 'pet', other_suffix: ''
+        }));
+        _prePopulateFromConfig(data.config);
+        renderConfigTable();
+        statusEl.innerHTML = '<span class="t-ok">✓ Config loaded into table</span>';
+      } catch {
+        statusEl.innerHTML = '<span class="t-err">✗ Failed to load config.</span>';
+      }
+    }
+
+    function validateEditorJson() {
+      const ta = document.getElementById('pet-config-editor-text');
+      const warn = document.getElementById('pet-editor-json-warn');
+      if (!ta.value.trim()) {
+        warn.style.display = 'none';
+        return;
+      }
+      try {
+        JSON.parse(ta.value);
+        warn.style.display = 'none';
+      } catch (e) {
+        warn.textContent = '⚠ Invalid JSON: ' + e.message;
+        warn.style.display = '';
+      }
+    }
+
+    function updateLineNumbers() {
+      const ta = document.getElementById('pet-config-editor-text');
+      const gutter = document.getElementById('pet-editor-lines');
+      const count = ta.value.split('\n').length;
+      gutter.textContent = Array.from({ length: count }, (_, i) => i + 1).join('\n');
+    }
+
+    function syncLineScroll() {
+      const ta = document.getElementById('pet-config-editor-text');
+      const gutter = document.getElementById('pet-editor-lines');
+      gutter.scrollTop = ta.scrollTop;
+    }
+
+    async function loadConfigEditor() {
+      const ta = document.getElementById('pet-config-editor-text');
+      const status = document.getElementById('pet-editor-status');
+      try {
+        const resp = await fetch(_addToken('/pet-get-bids-config'));
+        if (resp.status === 401 && window._handleAuthError) { window._handleAuthError(); return; }
+        if (!resp.ok) {
+          status.innerHTML = '<span class="t-err">Failed to load config.</span>';
+          return;
+        }
+        const data = await resp.json();
+        ta.value = data.config ? JSON.stringify(data.config, null, 4) : '';
+        status.textContent = '';
+        updateLineNumbers();
+      } catch {
+        status.innerHTML = '<span class="t-err">Failed to load config.</span>';
+      }
+    }
+
+    async function saveConfigEditor() {
+      const ta = document.getElementById('pet-config-editor-text');
+      const status = document.getElementById('pet-editor-status');
+      let parsed;
+      try {
+        parsed = JSON.parse(ta.value);
+      } catch (e) {
+        status.innerHTML = '<span class="t-err">✗ Invalid JSON: ' + esc(e.message) + '</span>';
+        return;
+      }
+      try {
+        const resp = await fetch(_addToken('/pet-save-bids-config'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsed),
+        });
+        const data = await resp.json();
+        status.innerHTML = data.ok
+          ? '<span class="t-ok">✓ Saved</span>'
+          : '<span class="t-err">✗ Server error.</span>';
+      } catch {
+        status.innerHTML = '<span class="t-err">✗ Failed to reach server.</span>';
+      }
+    }
+
+    function renderCsvFileList(paths) {
+      const list = document.getElementById('csv-file-list');
+      if (!list) {
+        // csv-file-list element doesn't exist (e.g., in simplified QC tab)
+        return;
+      }
+      list.innerHTML = '';
+      if (!paths.length) {
+        list.innerHTML = '<li style="color:#9e9e9e;">No CSV files found.</li>';
+        return;
+      }
+      for (const path of paths) {
+        const li = document.createElement('li');
+        li.style.cursor = 'pointer';
+        li.style.color = '#4ec9b0';
+        li.textContent = path;
+        li.onclick = () => { 
+          const csvPathEl = document.getElementById('csv-path');
+          if (csvPathEl) {
+            csvPathEl.value = path;
+          }
+        };
+        list.appendChild(li);
+      }
+    }
+
+    function runOverview() {
+      const btn = document.getElementById('overview-btn');
+      const out = document.getElementById('overview-output');
+      const relPath = document.getElementById('overview-path').value.trim();
+
+      if (!relPath) {
+        out.innerHTML = '<span class="t-err">Please enter a path.</span>';
+        return;
+      }
+
+      if (activeSource) { activeSource.close(); activeSource = null; }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Loading…';
+      out.innerHTML = '';
+
+      activeSource = new EventSource(_addToken('/raw-pet-overview?path=' + encodeURIComponent(relPath)));
+
+      activeSource.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.error === 'invalid_path') {
+          activeSource.close();
+          activeSource = null;
+          btn.disabled = false;
+          btn.textContent = 'Show file overview';
+          out.innerHTML = '<span class="t-err">Invalid path.</span>';
+          return;
+        }
+        if (msg.done) {
+          activeSource.close();
+          activeSource = null;
+          btn.disabled = false;
+          btn.textContent = 'Show file overview';
+          return;
+        } else if (msg.file && msg.open_url) {
+          out.innerHTML +=
+            '<a href="' + escAttr(msg.open_url) + '" target="_blank" rel="noopener noreferrer">' +
+            esc(msg.file) +
+            '</a>\n';
+          out.scrollTop = out.scrollHeight;
+        } else {
+          if (msg.line && msg.line.startsWith('Overview for:')) {
+            return;
+          }
+          out.innerHTML += esc(msg.line) + '\n';
+          out.scrollTop = out.scrollHeight;
+        }
+      };
+
+      activeSource.onerror = () => {
+        activeSource.close();
+        activeSource = null;
+        btn.disabled = false;
+        btn.textContent = 'Show file overview';
+        out.innerHTML += '<span class="t-err">\nConnection error.</span>';
+      };
+    }
+
+    function runRawDataOverview() {
+      const btn = document.getElementById('raw-btn');
+      const out = document.getElementById('raw-output');
+      const relPath = document.getElementById('raw-path').value.trim();
+
+      if (!relPath) {
+        out.innerHTML = '<span class="t-err">Please enter a path.</span>';
+        return;
+      }
+
+      if (activeSource) { activeSource.close(); activeSource = null; }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Analyzing…';
+      out.innerHTML = '';
+
+      const force = document.getElementById('pet-force-check').checked ? '1' : '0';
+      activeSource = new EventSource(_addToken('/run-dcm2bids-helper-pet?path=' + encodeURIComponent(relPath) + '&force=' + force));
+
+      activeSource.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.error === 'invalid_path') {
+          activeSource.close(); activeSource = null;
+          btn.disabled = false;
+          btn.textContent = 'Analyze DICOM fields';
+          out.innerHTML = '<span class="t-err">Invalid path.</span>';
+          return;
+        }
+        if (msg.done) {
+          activeSource.close(); activeSource = null;
+          btn.disabled = false;
+          btn.textContent = 'Analyze DICOM fields';
+          const ok = msg.returncode === 0;
+          _petHelperRunCompleted = true;
+          out.innerHTML += '<span class="' + (ok ? 't-ok' : 't-err') + '">' + esc(ok ? '\n✓ Done.' : '\n✗ Exited with code ' + msg.returncode + '.') + '</span>';
+          out.scrollTop = out.scrollHeight;
+          loadHelperSummary(false);
+        } else {
+          out.innerHTML += esc(msg.line) + '\n';
+          out.scrollTop = out.scrollHeight;
+        }
+      };
+
+      activeSource.onerror = () => {
+        activeSource.close(); activeSource = null;
+        btn.disabled = false;
+        btn.textContent = 'Analyze DICOM fields';
+        out.innerHTML += '<span class="t-err">\nConnection error.</span>';
+      };
+    }
+
+    async function discoverSessions() {
+      const dicomRel = document.getElementById('pet-bids-dicom-path').value.trim();
+      if (!dicomRel) {
+        alert('Enter a DICOM input path first.');
+        return;
+      }
+
+      const btn = document.getElementById('pet-discover-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Discovering…';
+      document.getElementById('pet-bids-run-status').textContent = '';
+      document.getElementById('pet-bids-sessions-section').style.display = 'none';
+
+      if (document.querySelectorAll('#pet-bids-session-table-wrap .bids-recode-input').length > 0) {
+        await _saveRecodeTable();
+      }
+
+      try {
+        const [sesRes, recRes] = await Promise.all([
+          fetch(_addToken('/pet-discover-sessions?dicom_root=' + encodeURIComponent(dicomRel))),
+          fetch(_addToken('/pet-get-recode-table')),
+        ]);
+
+        if (!sesRes.ok) {
+          throw new Error('HTTP ' + sesRes.status);
+        }
+
+        const sesData = await sesRes.json();
+        if (sesData.error) {
+          throw new Error(sesData.error);
+        }
+
+        const recData = recRes.ok ? await recRes.json() : {};
+        _bidsDiscoveredSessions = sesData.sessions || [];
+        renderSessionList(_bidsDiscoveredSessions, recData.recode || {});
+      } catch (e) {
+        document.getElementById('pet-bids-session-count').textContent = 'Error: ' + e.message;
+        document.getElementById('pet-bids-session-table-wrap').innerHTML = '';
+        document.getElementById('pet-bids-sessions-section').style.display = '';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Discover sessions';
+      }
+    }
+
+    function renderSessionList(sessions, recodeMap) {
+      recodeMap = recodeMap || {};
+      const countEl = document.getElementById('pet-bids-session-count');
+      const tableWrap = document.getElementById('pet-bids-session-table-wrap');
+      const section = document.getElementById('pet-bids-sessions-section');
+
+      countEl.textContent = sessions.length + ' session' + (sessions.length !== 1 ? 's' : '') + ' found';
+      if (sessions.length === 0) {
+        tableWrap.innerHTML = '<p style="padding:0.6rem 1rem; color:#9e9e9e; font-size:0.87rem;">No sessions found in that directory.</p>';
+        section.style.display = '';
+        return;
+      }
+
+      let html = '<table class="config-table" style="font-size:0.85rem;">';
+      html += '<thead><tr><th>Label</th><th>Participant</th><th>Recoded participant ID</th>'
+            + '<th>Session</th><th>Recoded session ID</th><th style="text-align:center;">Include</th></tr></thead><tbody>';
+
+      sessions.forEach((s, i) => {
+        const color = _sessionColor(i);
+        const rec = recodeMap[s.label] || {};
+        const rpVal = rec.recoded_participant || '';
+        const rsVal = rec.recoded_session || '';
+        const pPad = s.participant ? s.participant.padStart(3, '0') : '';
+        const sesPad = s.session ? s.session.padStart(2, '0') : '';
+
+        html += '<tr>';
+        html += '<td style="color:' + color + ';">' + esc(s.label) + '</td>';
+        html += '<td>' + esc(s.participant || '') + '</td>';
+        html += '<td style="min-width:10rem;"><input class="tbl-input bids-recode-input" type="text"'
+             +  ' data-label="' + escAttr(s.label) + '" data-field="recoded_participant" data-pad="3"'
+             +  ' value="' + escAttr(rpVal) + '" placeholder="' + escAttr(pPad ? 'keep ' + pPad : 'keep as is') + '"'
+             +  ' oninput="petBids.validateRecodeInput(this)" onblur="petBids.debouncedSaveRecode()" />'
+             +  '<div class="recode-hint"></div></td>';
+        html += '<td>' + esc(s.session || '—') + '</td>';
+        html += '<td style="min-width:10rem;"><input class="tbl-input bids-recode-input" type="text"'
+             +  ' data-label="' + escAttr(s.label) + '" data-field="recoded_session" data-pad="2"'
+             +  ' value="' + escAttr(rsVal) + '" placeholder="' + escAttr(sesPad ? 'keep ' + sesPad : (s.session != null ? 'keep as is' : 'none — add?')) + '"'
+             +  ' oninput="petBids.validateRecodeInput(this)" onblur="petBids.debouncedSaveRecode()" />'
+             +  '<div class="recode-hint"></div></td>';
+        html += '<td style="text-align:center;"><input type="checkbox" class="bids-ses-check" data-label="'
+             +  escAttr(s.label) + '" checked style="accent-color:#0e639c;"></td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table>';
+      tableWrap.innerHTML = html;
+      document.querySelectorAll('#pet-bids-session-table-wrap .bids-recode-input').forEach(inp => {
+        if (inp.value) {
+          validateRecodeInput(inp);
+        }
+      });
+      section.style.display = '';
+    }
+
+    function bidsSelectAll(checked) {
+      document.querySelectorAll('#pet-bids-session-table-wrap .bids-ses-check').forEach(cb => {
+        cb.checked = checked;
+      });
+    }
+
+    function validateRecodeInput(input) {
+      const val = input.value.trim();
+      const padLen = parseInt(input.dataset.pad, 10) || 3;
+      const hint = input.nextElementSibling;
+      input.value = val;
+
+      if (!val) {
+        input.style.borderColor = '';
+        if (hint) {
+          hint.textContent = '';
+          hint.style.color = '';
+        }
+        return true;
+      }
+
+      if (!/^\d+$/.test(val)) {
+        input.style.borderColor = '#f48771';
+        if (hint) {
+          hint.textContent = 'Digits only';
+          hint.style.color = '#f48771';
+        }
+        return false;
+      }
+
+      const padded = val.padStart(padLen, '0');
+      if (val !== padded) {
+        input.style.borderColor = '#d7ba7d';
+        if (hint) {
+          hint.textContent = 'Recommended: ' + padded;
+          hint.style.color = '#d7ba7d';
+        }
+      } else {
+        input.style.borderColor = '#4ec9b0';
+        if (hint) {
+          hint.textContent = '';
+          hint.style.color = '';
+        }
+      }
+      return true;
+    }
+
+    function debouncedSaveRecode() {
+      clearTimeout(_recodeTimer);
+      _recodeTimer = setTimeout(_saveRecodeTable, 600);
+    }
+
+    async function _saveRecodeTable() {
+      const recode = {};
+      document.querySelectorAll('#pet-bids-session-table-wrap .bids-recode-input').forEach(inp => {
+        const label = inp.dataset.label;
+        const field = inp.dataset.field;
+        if (!recode[label]) {
+          recode[label] = {};
+        }
+        recode[label][field] = inp.value.trim();
+      });
+
+      try {
+        await fetch(_addToken('/pet-save-recode-table'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recode }),
+        });
+
+        const el = document.getElementById('pet-bids-recode-status');
+        if (el) {
+          el.innerHTML = '<span class="t-ok">✓ Recode saved</span>';
+          setTimeout(() => { el.innerHTML = ''; }, 2000);
+        }
+      } catch (_) {
+        // Keep recode save failures non-blocking while editing.
+      }
+    }
+
+    async function runDcm2bids() {
+      const dicomRel = document.getElementById('pet-bids-dicom-path').value.trim();
+      const outputRel = document.getElementById('pet-bids-output-path').value.trim();
+      const configRel = 'cir-utils/dcm2bids_config_pet.json';
+      const workers = parseInt(document.getElementById('pet-bids-workers').value, 10) || 8;
+      const clobber = document.getElementById('pet-bids-clobber').checked;
+      const btn = document.getElementById('pet-run-bids-btn');
+      const statusEl = document.getElementById('pet-bids-run-status');
+      const selectedLabels = Array.from(document.querySelectorAll('#pet-bids-session-table-wrap .bids-ses-check:checked')).map(cb => cb.dataset.label);
+
+      if (selectedLabels.length === 0) {
+        statusEl.innerHTML = '<span class="t-err">No sessions selected.</span>';
+        return;
+      }
+
+      const recode = {};
+      let hasErr = false;
+      document.querySelectorAll('#pet-bids-session-table-wrap .bids-recode-input').forEach(inp => {
+        if (!validateRecodeInput(inp)) {
+          hasErr = true;
+        }
+        if (!recode[inp.dataset.label]) {
+          recode[inp.dataset.label] = {};
+        }
+        recode[inp.dataset.label][inp.dataset.field] = inp.value.trim();
+      });
+      if (hasErr) {
+        statusEl.innerHTML = '<span class="t-err">Fix recode errors before running.</span>';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Starting…';
+      statusEl.textContent = '';
+      const logEl = document.getElementById('pet-bids-log');
+      logEl.style.display = '';
+      logEl.innerHTML = '';
+
+      try {
+        const resp = await fetch(_addToken('/pet-run-dcm2bids'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dicom_root: dicomRel,
+            output_dir: outputRel,
+            config_file: configRel,
+            sessions: selectedLabels,
+            max_workers: workers,
+            clobber,
+            recode,
+          }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+          statusEl.innerHTML = '<span class="t-err">✗ ' + esc(data.error) + '</span>';
+          btn.disabled = false;
+          btn.textContent = 'Run PET BIDS';
+          return;
+        }
+        _streamBidsJob(data.job_id, btn, statusEl);
+      } catch (e) {
+        statusEl.innerHTML = '<span class="t-err">✗ ' + esc(e.message) + '</span>';
+        btn.disabled = false;
+        btn.textContent = 'Run PET BIDS';
+      }
+    }
+
+    function _streamBidsJob(jobId, btn, statusEl) {
+      btn.innerHTML = '<span class="spinner"></span> Running…';
+      const logEl = document.getElementById('pet-bids-log');
+      const colorMap = {};
+      _bidsDiscoveredSessions.forEach((s, i) => {
+        colorMap[s.label] = _sessionColor(i);
+      });
+
+      const src = new EventSource(_addToken('/pet-stream-dcm2bids-job?job_id=' + encodeURIComponent(jobId)));
+      src.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        const label = msg.label || '';
+        const color = colorMap[label] || '#c8c8c8';
+        const lbl = label ? '<span style="color:' + color + ';">[' + esc(label) + ']</span> ' : '';
+
+        if (msg.type === 'start') {
+          logEl.innerHTML += '<span style="color:' + color + ';">[' + esc(label) + '] Starting…</span>\n';
+        } else if (msg.type === 'line') {
+          logEl.innerHTML += lbl + esc(msg.text) + '\n';
+        } else if (msg.type === 'exit') {
+          logEl.innerHTML += lbl + '<span class="' + (msg.returncode === 0 ? 't-ok' : 't-err') + '">' + (msg.returncode === 0 ? '✓ Done (exit 0)' : '✗ Exited with code ' + msg.returncode) + '</span>\n';
+        } else if (msg.type === 'error') {
+          logEl.innerHTML += '<span class="t-err">' + lbl + esc(msg.text || 'Unknown error') + '</span>\n';
+        } else if (msg.type === 'done') {
+          logEl.innerHTML += '<span class="t-ok">\n✓ All sessions complete.</span>\n';
+          src.close();
+          btn.disabled = false;
+          btn.textContent = 'Run PET BIDS';
+          statusEl.innerHTML = '<span class="t-ok">✓ Batch complete</span>';
+        }
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+
+      src.onerror = () => {
+        src.close();
+        btn.disabled = false;
+        btn.textContent = 'Run PET BIDS';
+        if (!logEl.textContent.includes('All sessions complete')) {
+          logEl.innerHTML += '<span class="t-err">Connection lost.</span>\n';
+          statusEl.innerHTML = '<span class="t-err">✗ Stream disconnected</span>';
+        }
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+    }
+
+    async function loadCsvFile() {
+      const relPath = document.getElementById('csv-path').value.trim();
+      if (!relPath) { alert('Please enter a CSV path.'); return; }
+      try {
+        const selectedColumns = _splitColumnList(document.getElementById('csv-columns').value);
+        if (!selectedColumns.length) {
+          document.getElementById('csv-columns').value = defaultSelectedColumns.join(', ');
+        }
+        const res = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(relPath)));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const requestedColumns = selectedColumns.length ? selectedColumns : defaultSelectedColumns;
+        const projected = _buildSourceProjection(data.headers || [], data.rows || [], requestedColumns);
+        if (projected.error) {
+          throw new Error(projected.error);
+        }
+        sourceAutoDetected = Array.isArray(data.auto_detected) ? data.auto_detected.slice() : [];
+        currentCsv = { path: data.path, headers: projected.headers, rows: projected.rows, writableColumns: [], mode: 'source', auto_detected: sourceAutoDetected.slice() };
+        renderCsvTable();
+      } catch (err) {
+        alert('Failed to load CSV: ' + err.message);
+      }
+    }
+
+    function renderCsvCellHtml(header, rawValue, rowIndex, colIndex, row) {
+      const value = String(rawValue || '');
+
+      if (currentCsv.mode === 'target' && isStatusColumn(header)) {
+        if (!isCellVisible(header, row)) {
+          return '<td style="opacity:0.3;"></td>';
+        }
+
+        let normalized = normalizeStatus(value) || (isBidsColumn(header) ? 'to do' : '');
+        if (isBidsColumn(header) && normalized === 'to do' && !value) {
+          row[colIndex] = 'to do';
+        }
+        if (isPetprepColumn(header) && normalized === '' && getRowBidsStatus(row) === 'done') {
+          normalized = 'to do';
+          row[colIndex] = 'to do';
+        }
+
+        const statusClass = normalized === ''
+          ? 'status-select-blank'
+          : (normalized === 'to do'
+            ? 'status-select-to-do'
+            : (normalized === 'done'
+              ? 'status-select-done'
+              : (normalized === 'approved' ? 'status-select-approved' : 'status-select-denied')));
+        const locked = isReadOnly() || !isCellEditableAndVisible(header, row);
+        const options = ['', 'to do', 'done', 'approved', 'denied'];
+        const selectHtml = options.map(optionValue => {
+          const selected = optionValue === normalized ? ' selected' : '';
+          const label = optionValue === '' ? '' : optionValue.charAt(0).toUpperCase() + optionValue.slice(1);
+          return '<option value="' + escAttr(optionValue) + '"' + selected + '>' + esc(label) + '</option>';
+        }).join('');
+
+        return '<td><select class="status-select ' + statusClass + '" data-row="' + rowIndex + '" data-col="' + colIndex + '"' + (locked ? ' data-locked="true" disabled' : '') + '>' + selectHtml + '</select></td>';
+      }
+
+      return '<td>' + esc(value) + '</td>';
+    }
+
+    function renderCsvTable(headers = currentCsv.headers, rows = currentCsv.rows) {
+      const wrap = document.getElementById('csv-table-wrap');
+      if (!headers.length) {
+        wrap.style.display = 'none';
+        return;
+      }
+
+      const tbl = document.getElementById('csv-table');
+      const headHtml = '<thead><tr>' + headers.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead>';
+      const bodyHtml = '<tbody>' + rows.map((row, rowIndex) => {
+        const safeRow = row || [];
+        return '<tr>' + headers.map((header, colIndex) => renderCsvCellHtml(header, safeRow[colIndex], rowIndex, colIndex, safeRow)).join('') + '</tr>';
+      }).join('') + '</tbody>';
+
+      tbl.innerHTML = headHtml + bodyHtml;
+
+      tbl.querySelectorAll('select.status-select:not([disabled])').forEach(select => {
+        select.addEventListener('change', async (ev) => {
+          const target = ev.currentTarget;
+          const rowIndex = Number(target.dataset.row);
+          const colIndex = Number(target.dataset.col);
+          await updateStatusSelect(rowIndex, colIndex, target.value);
+        });
+      });
+
+      wrap.style.display = '';
+    }
+
+    function isEditableStatusCell(header, value) {
+      const h = String(header || '').toLowerCase();
+      const v = String(value || '').toLowerCase().trim();
+      if (v === 'not done' || v === 'to do' || v === 'done' || v === 'approved' || v === 'denied') {
+        return true;
+      }
+      if (trackingColumns.includes(header)) {
+        return true;
+      }
+      return h.includes('status') || h.includes('qc') || h.includes('approval') || h.includes('done');
+    }
+
+    async function updateStatusSelect(rowIndex, colIndex, selectedValue) {
+      if (isReadOnly()) {
+        renderCsvTable();
+        setCsvFeedback('Read-only mode is enabled.', 'err');
+        return;
+      }
+      if (currentCsv.mode !== 'target') {
+        renderCsvTable();
+        setCsvFeedback('Load a target file before editing statuses.', 'err');
+        return;
+      }
+
+      const header = currentCsv.headers[colIndex];
+      const cell = currentCsv.rows[rowIndex];
+      if (!cell) return;
+
+      if (!isCellEditableAndVisible(header, cell)) {
+        setCsvFeedback('This task is locked. Complete earlier tasks to unlock it.', 'err');
+        renderCsvTable();
+        return;
+      }
+
+      const next = normalizeStatus(selectedValue);
+      const previousRow = cell.slice();
+      cell[colIndex] = next;
+      const dependencyChanges = applyStatusDependenciesForRow(cell, header, next);
+      renderCsvTable();
+
+      const changedHeaders = [header].concat(dependencyChanges);
+      const writableChanges = changedHeaders.filter(h => currentCsv.writableColumns.includes(h));
+      const hasMemoryOnlyChanges = changedHeaders.some(h => !currentCsv.writableColumns.includes(h));
+
+      try {
+        for (const changedHeader of writableChanges) {
+          const idx = currentCsv.headers.indexOf(changedHeader);
+          const value = idx >= 0 ? (cell[idx] || '') : '';
+          const res = await fetch(_addToken('/update-csv-cell'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: currentCsv.path,
+              row_index: rowIndex,
+              column: changedHeader,
+              value: value,
+            }),
+          });
+
+          if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(msg || ('HTTP ' + res.status));
+          }
+        }
+
+        if (hasMemoryOnlyChanges) {
+          setCsvFeedback('Updated status workflow in memory. Click "Save to target" to persist tracking columns.', 'ok');
+        }
+      } catch (err) {
+        currentCsv.rows[rowIndex] = previousRow;
+        renderCsvTable();
+        setCsvFeedback('Failed to save update: ' + String(err.message || err), 'err');
+      }
+    }
+
+    async function initializeTargetFromSource() {
+      if (!currentCsv.headers.length) {
+        alert('Load a source CSV first.');
+        return;
+      }
+      const targetPath = document.getElementById('target-file-path').value.trim();
+      if (!targetPath) { alert('Please set a target file path.'); return; }
+      
+      // Check if target file already exists
+      try {
+        const checkRes = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(targetPath)));
+        if (checkRes.ok) {
+          // File exists, show confirmation dialog
+          document.getElementById('init-target-dialog-overlay').style.display = '';
+          document.getElementById('init-target-dialog').style.display = '';
+          document.getElementById('init-target-preview').textContent = targetPath;
+          document.getElementById('init-target-confirm-checkbox').checked = false;
+          document.getElementById('init-target-confirm-btn').disabled = true;
+          return;
+        }
+      } catch (e) {
+        // Ignore errors, file likely doesn't exist
+      }
+      
+      // File doesn't exist, proceed directly
+      await executeInitializeTargetFromSource();
+    }
+    
+    function closeInitTargetDialog() {
+      document.getElementById('init-target-dialog-overlay').style.display = 'none';
+      document.getElementById('init-target-dialog').style.display = 'none';
+      document.getElementById('init-target-confirm-checkbox').checked = false;
+      document.getElementById('init-target-confirm-btn').disabled = true;
+    }
+    
+    function refreshInitTargetConfirmState() {
+      document.getElementById('init-target-confirm-btn').disabled = !document.getElementById('init-target-confirm-checkbox').checked;
+    }
+    
+    async function executeInitializeTargetFromSource() {
+      closeInitTargetDialog();
+      const saved = await petBids.saveTargetFile();
+      if (saved) {
+        await loadTargetFile();
+      }
+    }
+
+    async function loadTargetFile() {
+      const targetInput = document.getElementById('target-file-path');
+      let relPath = targetInput.value.trim();
+      if (!relPath) {
+        const sourcePath = document.getElementById('csv-path').value.trim();
+        if (sourcePath) {
+          relPath = deriveTargetPath(sourcePath);
+          targetInput.value = relPath;
+        }
+      }
+      if (!relPath) {
+        setCsvFeedback('Please load a source CSV or set a target file path first.', 'err');
+        return null;
+      }
+      try {
+        const res = await fetch(_addToken('/load-target-file?path=' + encodeURIComponent(relPath)));
+        if (!res.ok) return null;
+        const data = await res.json();
+        const normalized = ensureTrackingColumns(data.headers || [], data.rows || []);
+        currentCsv = {
+          path: data.path,
+          headers: normalized.headers,
+          rows: normalized.rows,
+          writableColumns: (data.headers || []).slice(),
+          mode: 'target',
+          auto_detected: data.auto_detected || [],
+        };
+
+        try {
+          applyDefaultWorkflowValues();
+          applyAutoDetectedStatuses(data.auto_detected || []);
+          renderCsvTable(currentCsv.headers, currentCsv.rows);
+        } catch (workflowErr) {
+          console.warn('Workflow state initialization failed:', workflowErr);
+          setCsvFeedback('Loaded target CSV, but some workflow states could not be initialized automatically.', 'err');
+        }
+
+        const addedText = normalized.added.length
+          ? ' | Added tracking columns: ' + normalized.added.join(', ')
+          : '';
+        const autoText = (data.auto_detected || []).length
+          ? ' | Auto-detected statuses applied'
+          : '';
+        setCsvFeedback(
+          'Target loaded: ' + (data.path || relPath) +
+          ' | Rows: ' + String(data.row_count || 0) +
+          addedText +
+          autoText +
+          (isReadOnly() ? ' | Read-only' : ' | Editable target mode'),
+          'ok'
+        );
+        return true;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    async function saveTargetFile() {
+      const relPath = document.getElementById('target-file-path').value.trim();
+      const cols = document.getElementById('status-column-names').value.split(',').map(c => c.trim()).filter(Boolean);
+      const sourcePath = document.getElementById('csv-path').value.trim();
+      const targetPath = relPath || (sourcePath ? deriveTargetPath(sourcePath) : '');
+      if (!targetPath) { alert('Please set a target file path.'); return false; }
+      try {
+        const targetCsv = currentCsv.mode === 'source'
+          ? _buildTargetFromSource(cols, sourceAutoDetected.length ? sourceAutoDetected : (currentCsv.auto_detected || []))
+          : { headers: currentCsv.headers || [], rows: currentCsv.rows || [] };
+        const res = await fetch(_addToken('/save-target-file'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: targetPath, headers: targetCsv.headers, rows: targetCsv.rows, status_columns: cols }),
+        });
+        if (!res.ok) throw new Error('Save failed');
+        document.getElementById('target-file-path').value = targetPath;
+        alert('Target file saved.');
+        return true;
+      } catch (err) {
+        alert('Failed to save: ' + err.message);
+        return false;
+      }
+    }
+
+    function showResetDialog() {
+      document.getElementById('reset-dialog-overlay').style.display = '';
+      document.getElementById('reset-dialog').style.display = '';
+      document.getElementById('reset-target-preview').textContent = document.getElementById('target-file-path').value;
+    }
+
+    function closeResetDialog() {
+      document.getElementById('reset-dialog-overlay').style.display = 'none';
+      document.getElementById('reset-dialog').style.display = 'none';
+      document.getElementById('reset-confirm-checkbox').checked = false;
+      document.getElementById('reset-confirm-btn').disabled = true;
+    }
+
+    function refreshResetConfirmState() {
+      document.getElementById('reset-confirm-btn').disabled = !document.getElementById('reset-confirm-checkbox').checked;
+    }
+
+    async function executeResetTargetFile() {
+      const relPath = document.getElementById('target-file-path').value.trim();
+      const cols = document.getElementById('status-column-names').value.split(',').map(c => c.trim()).filter(Boolean);
+      if (!relPath) return;
+      try {
+        const targetCsv = currentCsv.mode === 'source'
+          ? _buildTargetFromSource(cols, sourceAutoDetected.length ? sourceAutoDetected : (currentCsv.auto_detected || []))
+          : { headers: currentCsv.headers || [], rows: [] };
+        const res = await fetch(_addToken('/reset-target-file'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: relPath, headers: targetCsv.headers, rows: targetCsv.rows }),
+        });
+        if (!res.ok) throw new Error('Reset failed');
+        closeResetDialog();
+        alert('Progress CSV restarted.');
+        await loadTargetFile();
+      } catch (err) {
+        alert('Failed to reset: ' + err.message);
+      }
+    }
+
+    function showMergeDialog() {
+      document.getElementById('merge-dialog-overlay').style.display = '';
+      document.getElementById('merge-dialog').style.display = '';
+    }
+
+    function closeMergeDialog() {
+      document.getElementById('merge-dialog-overlay').style.display = 'none';
+      document.getElementById('merge-dialog').style.display = 'none';
+    }
+
+    async function mergeFileSelected() {
+      const val = document.getElementById('merge-file-select').value;
+      if (val) document.getElementById('merge-file-path').value = val;
+    }
+
+    async function executeMerge() {
+      const targetPath = document.getElementById('target-file-path').value.trim();
+      const completedPath = document.getElementById('merge-file-path').value.trim();
+      if (!targetPath || !completedPath) { alert('Please select both files.'); return; }
+      try {
+        const res = await fetch(_addToken('/merge-completed-sessions'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_path: targetPath, completed_path: completedPath }),
+        });
+        if (!res.ok) throw new Error('Merge failed');
+        const data = await res.json();
+        closeMergeDialog();
+        alert('Merged ' + data.merged_count + ' rows.');
+        await loadTargetFile();
+      } catch (err) {
+        alert('Failed to merge: ' + err.message);
+      }
+    }
+
+    function refreshEditability() {
+      if (currentCsv && currentCsv.headers && currentCsv.headers.length) {
+        renderCsvTable(currentCsv.headers, currentCsv.rows);
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // PET QC Tab Functions - Simplified workflow
+    // ════════════════════════════════════════════════════════════════════════════════
+
+    let _petQcTransferLogData = null;
+    let _petQcCurrentData = null;
+    let _petQcTransferLogFiles = [];
+    const _petQcRequiredColumns = ['cir_id', 'sub_id', 'session_number', 'cir_facility', 'scan_date', 'pet_bids', 'pet_prep'];
+    const _petQcQcColumns = [
+      { key: 'QC_MC', label: 'motion correction' },
+      { key: 'QC_coreg', label: 'motion correction' },
+      { key: 'QC_mri', label: 'mri delineation' },
+      { key: 'QC_FS', label: 'freesurfer' },
+    ];
+
+    function _setPetQcStatus(msg, type = 'ok') {
+      const el = document.getElementById('petqc-init-status');
+      if (el) {
+        el.textContent = msg;
+        el.style.color = type === 'err' ? '#f48771' : (type === 'warn' ? '#ffd700' : '#4ec9b0');
+      }
+    }
+
+    function _setPetQcQcStatus(msg, type = 'ok') {
+      const el = document.getElementById('petqc-qc-status');
+      if (el) {
+        el.textContent = msg;
+        el.style.color = type === 'err' ? '#f48771' : (type === 'warn' ? '#ffd700' : '#4ec9b0');
+      }
+    }
+
+    function _getSelectedPetQcPaths() {
+      const select = document.getElementById('petqc-transfer-log-select');
+      const transferLog = select ? String(select.value || '').trim() : '';
+      if (!transferLog) {
+        throw new Error('Please select a transfer log before initializing PET QC.');
+      }
+      if (!transferLog.startsWith('utils/') || !transferLog.toLowerCase().endsWith('transfer_log.csv')) {
+        throw new Error('Invalid transfer log selection.');
+      }
+
+      return {
+        transferLog,
+        qcLog: transferLog.replace(/transfer_log\.csv$/i, 'petqc_log.csv'),
+      };
+    }
+
+    function _getPetQcTransferLogColumns(headers) {
+      const normalizedHeaders = (headers || []).map(h => String(h || '').trim().toLowerCase());
+      const columnMap = {};
+
+      // Allow some common header aliases when matching required columns.
+      const aliases = {
+        cir_id: ['cir_id', 'cir_project', 'project', 'project_id'],
+        sub_id: ['sub_id', 'subject_id', 'subject'],
+        session_number: ['session_number', 'session'],
+        cir_facility: ['cir_facility', 'facility', 'site'],
+        scan_date: ['scan_date', 'date', 'scan_date_utc'],
+        pet_bids: ['pet_bids'],
+        pet_prep: ['pet_prep'],
+      };
+
+      for (const columnName of _petQcRequiredColumns) {
+        const tried = aliases[columnName] || [columnName];
+        let found = -1;
+        for (const alt of tried) {
+          const idx = normalizedHeaders.indexOf(alt);
+          if (idx >= 0) {
+            found = idx;
+            break;
+          }
+        }
+        if (found < 0) {
+          return null;
+        }
+        columnMap[columnName] = found;
+      }
+
+      return columnMap;
+    }
+
+    function _getPetQcDisplayHeaders(headers) {
+      return (headers || []).map(header => {
+        const name = String(header || '').trim();
+        const match = _petQcQcColumns.find(column => column.key.toLowerCase() === name.toLowerCase());
+        return match ? match.label : name;
+      });
+    }
+
+    function _getPetQcFilteredRows(rows, columnMap) {
+      return (rows || []).filter(row => {
+        const facility = String(row[columnMap.cir_facility] || '').trim();
+        return facility === '3';
+      });
+    }
+
+    function _buildPetQcTransferTableData(headers, rows, columnMap) {
+      const filteredRows = _getPetQcFilteredRows(rows, columnMap);
+      const displayHeaders = _petQcRequiredColumns.map(col => headers[columnMap[col]]);
+      const mappedRows = filteredRows.map(row => _petQcRequiredColumns.map(col => {
+        const v = row[columnMap[col]];
+        return v === undefined || v === null ? '' : v;
+      }));
+      return {
+        headers: displayHeaders,
+        rows: mappedRows,
+      };
+    }
+
+    function _buildPetQcCreateRows(headers, rows, columnMap) {
+      const filteredRows = _getPetQcFilteredRows(rows, columnMap);
+      const qcHeaders = _petQcQcColumns.map(column => column.key);
+      // Use only the required columns + QC columns for display in the QC file view.
+      const displayHeaders = _getPetQcDisplayHeaders([..._petQcRequiredColumns, ...qcHeaders]);
+      const outputRows = filteredRows.map(row => [
+        ..._petQcRequiredColumns.map(column => {
+          const v = row[columnMap[column]];
+          return v === undefined || v === null ? '' : v;
+        }),
+        ..._petQcQcColumns.map(() => ''),
+      ]);
+
+      return {
+        headers: [..._petQcRequiredColumns, ...qcHeaders],
+        displayHeaders,
+        rows: outputRows,
+      };
+    }
+
+    function _updatePetQcTransferLogPreview() {
+      const select = document.getElementById('petqc-transfer-log-select');
+      const preview = document.getElementById('petqc-transfer-log-preview');
+      if (!preview) return;
+      const transferLog = select ? String(select.value || '').trim() : '';
+      preview.textContent = transferLog ? `QC log: ${transferLog.replace(/transfer_log\.csv$/i, 'petqc_log.csv')}` : '';
+    }
+
+    async function _loadPetQcTransferLogFiles() {
+      const select = document.getElementById('petqc-transfer-log-select');
+      const preview = document.getElementById('petqc-transfer-log-preview');
+      const initBtn = document.getElementById('petqc-init-btn');
+      const createBtn = document.getElementById('petqc-create-btn');
+      if (!select) return;
+
+      select.disabled = true;
+      if (initBtn) initBtn.disabled = true;
+      if (createBtn) createBtn.disabled = true;
+      select.innerHTML = '<option value="">Loading transfer logs...</option>';
+      if (preview) preview.textContent = '';
+
+      try {
+        const res = await fetch(_addToken('/pet-get-transfer-log-files'));
+        if (res.status === 401 && window._handleAuthError) {
+          window._handleAuthError();
+          return;
+        }
+        if (!res.ok) {
+          throw new Error('Failed to load transfer log list (HTTP ' + res.status + ')');
+        }
+        const data = await res.json();
+        _petQcTransferLogFiles = Array.isArray(data.transfer_log_files) ? data.transfer_log_files : [];
+
+        if (!_petQcTransferLogFiles.length) {
+          select.innerHTML = '<option value="">No transfer logs found in utils/</option>';
+          select.disabled = true;
+          if (initBtn) initBtn.disabled = true;
+          if (createBtn) createBtn.disabled = true;
+          if (preview) preview.textContent = '';
+          _setPetQcStatus('No transfer_log.csv files found in utils/.', 'warn');
+          return;
+        }
+
+        select.innerHTML = _petQcTransferLogFiles
+          .map((path, index) => '<option value="' + escAttr(path) + '"' + (index === 0 ? ' selected' : '') + '>' + esc(path) + '</option>')
+          .join('');
+        select.disabled = false;
+        if (initBtn) initBtn.disabled = false;
+        if (createBtn) createBtn.disabled = false;
+        _updatePetQcTransferLogPreview();
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '';
+      } catch (err) {
+        console.error('Failed to load transfer log list:', err);
+        select.innerHTML = '<option value="">Failed to load transfer logs</option>';
+        select.disabled = true;
+        if (initBtn) initBtn.disabled = true;
+        if (createBtn) createBtn.disabled = true;
+        if (preview) preview.textContent = '';
+        _setPetQcStatus(err.message || 'Failed to load transfer log list.', 'err');
+      }
+    }
+
+    async function inspectPetQcTransferLog() {
+      try {
+        _setPetQcStatus('Loading transfer log...', 'warn');
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '';
+        const paths = _getSelectedPetQcPaths();
+        
+        // Load transfer log
+        const res = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.transferLog)));
+        if (!res.ok) {
+          _setPetQcStatus('Transfer log not found at ' + paths.transferLog, 'err');
+          return;
+        }
+        
+        const data = await res.json();
+        const headers = data.headers || [];
+        const rows = data.rows || [];
+
+        const columnMap = _getPetQcTransferLogColumns(headers);
+        if (!columnMap) {
+          _setPetQcStatus('Transfer log missing required columns: ' + _petQcRequiredColumns.join(', '), 'err');
+          return;
+        }
+
+        const transferTable = _buildPetQcTransferTableData(headers, rows, columnMap);
+
+        _petQcTransferLogData = {
+          path: paths.transferLog,
+          // Display-friendly, reduced headers/rows for the inspection table
+          headers: transferTable.headers,
+          rows: transferTable.rows,
+          // Preserve original fetched CSV so create uses full rows and correct indices
+          originalHeaders: headers,
+          originalRows: rows,
+          columnMap,
+        };
+
+        renderPetQcTransferLogTable();
+        _setPetQcStatus(`Inspected: ${transferTable.rows.length} filtered rows`, 'ok');
+      } catch (err) {
+        console.error('inspectPetQcTransferLog error:', err);
+        _setPetQcStatus('Error: ' + err.message, 'err');
+      }
+    }
+
+    async function _loadTransferLogForQcCreation() {
+      if (_petQcTransferLogData) {
+        // If we have the original full CSV stored from Inspect, return that to preserve
+        // column indices. Otherwise return the cached reduced view (legacy fallback).
+        if (_petQcTransferLogData.originalHeaders && _petQcTransferLogData.originalRows) {
+          return {
+            path: _petQcTransferLogData.path,
+            headers: _petQcTransferLogData.originalHeaders,
+            rows: _petQcTransferLogData.originalRows,
+            columnMap: _petQcTransferLogData.columnMap,
+          };
+        }
+        return _petQcTransferLogData;
+      }
+
+      const paths = _getSelectedPetQcPaths();
+      const res = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.transferLog)));
+      if (!res.ok) {
+        throw new Error('Transfer log not found at ' + paths.transferLog);
+      }
+
+      const data = await res.json();
+      const headers = data.headers || [];
+      const rows = data.rows || [];
+      const columnMap = _getPetQcTransferLogColumns(headers);
+      if (!columnMap) {
+        throw new Error('Transfer log missing required columns: ' + _petQcRequiredColumns.join(', '));
+      }
+
+      return {
+        path: paths.transferLog,
+        headers,
+        rows,
+        columnMap,
+      };
+    }
+
+    function renderPetQcTransferLogTable() {
+      const data = _petQcTransferLogData;
+      const wrap = document.getElementById('petqc-transfer-table-wrap');
+      const tbl = document.getElementById('petqc-transfer-table');
+      const meta = document.getElementById('petqc-transfer-meta');
+      if (!wrap || !tbl || !meta) return;
+
+      if (!data || !data.headers.length) {
+        wrap.style.display = 'none';
+        meta.textContent = '';
+        return;
+      }
+
+      const headHtml = '<thead><tr>' + data.headers.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead>';
+      const bodyHtml = '<tbody>' + data.rows.map(row => {
+        return '<tr>' + data.headers.map((_, colIndex) => '<td>' + esc(String(row[colIndex] || '')) + '</td>').join('') + '</tr>';
+      }).join('') + '</tbody>';
+
+      tbl.innerHTML = headHtml + bodyHtml;
+      wrap.style.display = '';
+      meta.textContent = `Rows: ${data.rows.length}`;
+    }
+
+    async function createPetQcFromTransferLog(forceOverwrite = false) {
+      try {
+        _setPetQcQcStatus('Creating QC log...', 'warn');
+        const transferData = await _loadTransferLogForQcCreation();
+        const paths = _getSelectedPetQcPaths();
+
+        if (!forceOverwrite) {
+          const checkRes = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.qcLog)));
+          if (checkRes.ok) {
+            document.getElementById('petqc-create-overlay').style.display = '';
+            document.getElementById('petqc-create-dialog').style.display = '';
+            document.getElementById('petqc-create-preview').textContent = paths.qcLog;
+            document.getElementById('petqc-create-confirm-checkbox').checked = false;
+            document.getElementById('petqc-create-confirm-btn').disabled = true;
+            _setPetQcQcStatus('QC log already exists. Confirm overwrite to continue.', 'warn');
+            return;
+          }
+        }
+
+        const createRows = _buildPetQcCreateRows(transferData.headers, transferData.rows, transferData.columnMap);
+        const saveRes = await fetch(_addToken('/save-target-file'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: paths.qcLog,
+            headers: createRows.headers,
+            rows: createRows.rows,
+            status_columns: _petQcQcColumns.map(column => column.key),
+          }),
+        });
+
+        if (!saveRes.ok) {
+          _setPetQcQcStatus('Failed to create QC log', 'err');
+          _setPetQcStatus('', 'ok');
+          throw new Error('Failed to create QC log');
+        }
+
+        _petQcCurrentData = {
+          path: paths.qcLog,
+          headers: createRows.headers,
+          displayHeaders: createRows.displayHeaders,
+          rows: createRows.rows,
+        };
+        renderPetQcTable();
+        const actualRows = (_petQcCurrentData && Array.isArray(_petQcCurrentData.rows)) ? _petQcCurrentData.rows.length : 0;
+        _setPetQcQcStatus(`✓ Created QC log with ${actualRows} rows`, 'ok');
+        _setPetQcStatus('', 'ok');
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '✓';
+      } catch (err) {
+        console.error('createPetQcFromTransferLog error:', err);
+        _setPetQcQcStatus('Error: ' + err.message, 'err');
+        _setPetQcStatus('', 'ok');
+      }
+    }
+
+    function closePetQcCreateDialog() {
+      document.getElementById('petqc-create-overlay').style.display = 'none';
+      document.getElementById('petqc-create-dialog').style.display = 'none';
+      document.getElementById('petqc-create-confirm-checkbox').checked = false;
+      document.getElementById('petqc-create-confirm-btn').disabled = true;
+    }
+
+    function refreshPetQcCreateConfirm() {
+      document.getElementById('petqc-create-confirm-btn').disabled = !document.getElementById('petqc-create-confirm-checkbox').checked;
+    }
+
+    async function executePetQcCreateFromTransferLog(forceOverwrite = false) {
+      if (!forceOverwrite) {
+        await createPetQcFromTransferLog(false);
+        return;
+      }
+
+      closePetQcCreateDialog();
+      await createPetQcFromTransferLog(true);
+    }
+
+    async function loadPetQcFile() {
+      try {
+        _setPetQcQcStatus('Loading QC tracking...', 'warn');
+        const paths = _getSelectedPetQcPaths();
+        
+        const res = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.qcLog)));
+        if (!res.ok) {
+          _setPetQcQcStatus('QC log not found. Create it from the transfer log first.', 'err');
+          return;
+        }
+        
+        const data = await res.json();
+        _petQcCurrentData = {
+          path: paths.qcLog,
+          headers: data.headers || [],
+          displayHeaders: _getPetQcDisplayHeaders(data.headers || []),
+          rows: data.rows || [],
+        };
+        
+        _setPetQcQcStatus(`Loaded: ${(data.rows || []).length} records`, 'ok');
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '✓';
+        renderPetQcTable();
+      } catch (err) {
+        console.error('loadPetQcFile error:', err);
+        _setPetQcQcStatus('Error: ' + err.message, 'err');
+        const successEl = document.getElementById('petqc-create-success');
+        if (successEl) successEl.textContent = '';
+      }
+    }
+
+    function renderPetQcTable() {
+      if (!_petQcCurrentData) return;
+      const headers = _petQcCurrentData.displayHeaders || _petQcCurrentData.headers || [];
+      const { rows } = _petQcCurrentData;
+      if (!headers.length) {
+        document.getElementById('petqc-table-wrap').style.display = 'none';
+        return;
+      }
+
+      const tbl = document.getElementById('petqc-table');
+      const headHtml = '<thead><tr>' + headers.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead>';
+      const bodyHtml = '<tbody>' + rows.map(row => {
+        return '<tr>' + headers.map((_, colIndex) => '<td>' + esc(String(row[colIndex] || '')) + '</td>').join('') + '</tr>';
+      }).join('') + '</tbody>';
+
+      tbl.innerHTML = headHtml + bodyHtml;
+      document.getElementById('petqc-table-wrap').style.display = '';
+      
+      const meta = document.getElementById('petqc-meta');
+      meta.textContent = `Rows: ${rows.length}`;
+    }
+
+    async function savePetQcFile() {
+      if (!_petQcCurrentData) {
+        alert('Load or initialize QC tracking first.');
+        return;
+      }
+      try {
+        const res = await fetch(_addToken('/save-target-file'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: _petQcCurrentData.path,
+            headers: _petQcCurrentData.headers,
+            rows: _petQcCurrentData.rows,
+            status_columns: [],
+          }),
+        });
+        if (!res.ok) throw new Error('Save failed');
+        _setPetQcQcStatus('Saved successfully', 'ok');
+      } catch (err) {
+        console.error('savePetQcFile error:', err);
+        alert('Failed to save: ' + err.message);
+      }
+    }
+
+    function showPetQcRestartDialog() {
+      if (!_petQcCurrentData) {
+        alert('Load or initialize QC tracking first.');
+        return;
+      }
+      const paths = _getSelectedPetQcPaths();
+      document.getElementById('petqc-restart-overlay').style.display = '';
+      document.getElementById('petqc-restart-dialog').style.display = '';
+      document.getElementById('petqc-restart-preview').textContent = paths.qcLog;
+      document.getElementById('petqc-restart-confirm-checkbox').checked = false;
+      document.getElementById('petqc-restart-confirm-btn').disabled = true;
+    }
+
+    function closePetQcRestartDialog() {
+      document.getElementById('petqc-restart-overlay').style.display = 'none';
+      document.getElementById('petqc-restart-dialog').style.display = 'none';
+      document.getElementById('petqc-restart-confirm-checkbox').checked = false;
+      document.getElementById('petqc-restart-confirm-btn').disabled = true;
+    }
+
+    function refreshPetQcRestartConfirm() {
+      document.getElementById('petqc-restart-confirm-btn').disabled = !document.getElementById('petqc-restart-confirm-checkbox').checked;
+    }
+
+    async function executePetQcRestart() {
+      closePetQcRestartDialog();
+      try {
+        const paths = _getSelectedPetQcPaths();
+        const res = await fetch(_addToken('/reset-target-file'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: paths.qcLog,
+            headers: _petQcCurrentData.headers,
+            rows: [],
+          }),
+        });
+        if (!res.ok) throw new Error('Restart failed');
+        _petQcCurrentData.rows = [];
+        renderPetQcTable();
+        _setPetQcStatus('Restarted', 'ok');
+      } catch (err) {
+        alert('Failed to restart: ' + err.message);
+      }
+    }
+
+    function showPetQcMergeDialog() {
+      if (!_petQcCurrentData) {
+        alert('Load or initialize QC tracking first.');
+        return;
+      }
+      document.getElementById('petqc-merge-overlay').style.display = '';
+      document.getElementById('petqc-merge-dialog').style.display = '';
+    }
+
+    function closePetQcMergeDialog() {
+      document.getElementById('petqc-merge-overlay').style.display = 'none';
+      document.getElementById('petqc-merge-dialog').style.display = 'none';
+    }
+
+    async function executePetQcMerge() {
+      if (!_petQcCurrentData) return;
+      try {
+        closePetQcMergeDialog();
+        _setPetQcQcStatus('Merging new rows...', 'warn');
+        
+        const paths = _getSelectedPetQcPaths();
+        
+        // Load updated transfer log
+        const res = await fetch(_addToken('/get-csv?path=' + encodeURIComponent(paths.transferLog)));
+        if (!res.ok) throw new Error('Transfer log not found');
+        
+        const data = await res.json();
+        const headers = data.headers || [];
+        const rows = data.rows || [];
+
+        const columnMap = _getPetQcTransferLogColumns(headers);
+        if (!columnMap) {
+          throw new Error('Transfer log missing required columns: ' + _petQcRequiredColumns.join(', '));
+        }
+
+        // Filter to cir_facility == 3
+        const filteredRows = _getPetQcFilteredRows(rows, columnMap);
+
+        // Build new rows in the required transfer-log + QC column order
+        const newRows = filteredRows.map(row => [
+          ..._petQcRequiredColumns.map(col => row[columnMap[col]]),
+          ..._petQcQcColumns.map(() => ''),
+        ]);
+
+        // Merge: keep existing rows, add new ones not already present
+        const existingCirIds = new Set(_petQcCurrentData.rows.map(r => String(r[0] || '').trim()));
+        let addedCount = 0;
+        for (const newRow of newRows) {
+          const cirId = String(newRow[0] || '').trim();
+          if (!existingCirIds.has(cirId)) {
+            _petQcCurrentData.rows.push(newRow);
+            existingCirIds.add(cirId);
+            addedCount++;
+          }
+        }
+        
+        // Save
+        await savePetQcFile();
+        renderPetQcTable();
+        _setPetQcQcStatus(`Merged: ${addedCount} new rows added`, 'ok');
+      } catch (err) {
+        console.error('executePetQcMerge error:', err);
+        _setPetQcQcStatus('Error: ' + err.message, 'err');
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // PETPrep Command Generator Functions
+    // ════════════════════════════════════════════════════════════════════════════════
+
+    function _setPetprepStatus(msg, type = 'ok') {
+      const el = document.getElementById('petprep-gen-status');
+      if (el) {
+        el.textContent = msg;
+        el.style.color = type === 'err' ? '#f48771' : (type === 'warn' ? '#ffd700' : '#4ec9b0');
+      }
+    }
+
+    function _setPetprepRunStatus(msg, type = 'ok') {
+      const el = document.getElementById('petprep-run-status');
+      if (el) {
+        el.textContent = msg;
+        el.style.color = type === 'err' ? '#f48771' : (type === 'warn' ? '#ffd700' : '#4ec9b0');
+      }
+    }
+
+    function _setPetprepCommandDisplay(cmd) {
+      const display = document.getElementById('petprep-command-display');
+      if (display) {
+        display.textContent = cmd || '(No command generated yet)';
+      }
+    }
+
+    function _setPetprepRunOutput(text, metaText) {
+      const output = document.getElementById('petprep-run-output');
+      const meta = document.getElementById('petprep-run-output-meta');
+      if (output) {
+        output.textContent = text || 'No PETPrep command has been run yet.';
+        output.scrollTop = output.scrollHeight;
+      }
+      if (meta) {
+        meta.textContent = metaText || 'Idle';
+      }
+    }
+
+    function _clearPetprepRunOutput(metaText) {
+      const output = document.getElementById('petprep-run-output');
+      const meta = document.getElementById('petprep-run-output-meta');
+      if (output) {
+        output.textContent = '';
+        output.scrollTop = 0;
+      }
+      if (meta) {
+        meta.textContent = metaText || 'Idle';
+      }
+    }
+
+    function _appendPetprepRunOutput(text, metaText) {
+      const output = document.getElementById('petprep-run-output');
+      const meta = document.getElementById('petprep-run-output-meta');
+      if (output) {
+        const next = output.textContent && output.textContent !== 'No PETPrep command has been run yet.'
+          ? output.textContent + (output.textContent.endsWith('\n') ? '' : '\n') + text
+          : text;
+        output.textContent = next;
+        output.scrollTop = output.scrollHeight;
+      }
+      if (meta && metaText) {
+        meta.textContent = metaText;
+      }
+    }
+
+    function _stopPetprepRunPolling() {
+      if (_petprepRunPollTimer) {
+        clearInterval(_petprepRunPollTimer);
+        _petprepRunPollTimer = null;
+      }
+    }
+
+    async function _refreshPetprepRunOutput() {
+      try {
+        const res = await fetch(_addToken('/petprep-run-log'));
+        if (res.status === 404) {
+          _setPetprepRunOutput('No PETPrep log yet.', 'Idle');
+          return false;
+        }
+        if (!res.ok) {
+          throw new Error('Failed to load PETPrep output (HTTP ' + res.status + ')');
+        }
+        const data = await res.json();
+        _setPetprepRunOutput(data.content || '', data.running ? ('Running (pid ' + (data.pid || '?') + ')') : 'Finished');
+        return !!data.running;
+      } catch (err) {
+        console.error('Failed to refresh PETPrep run output:', err);
+        _setPetprepRunOutput('Failed to load PETPrep output: ' + err.message, 'Error');
+        return false;
+      }
+    }
+
+    async function _startPetprepRunPolling() {
+      _stopPetprepRunPolling();
+      await _refreshPetprepRunOutput();
+      _petprepRunPollTimer = setInterval(async () => {
+        const stillRunning = await _refreshPetprepRunOutput();
+        if (!stillRunning) {
+          _stopPetprepRunPolling();
+        }
+      }, 2000);
+    }
+
+    function _getPetprepSelectedContainer() {
+      const select = document.getElementById('petprep-container-select');
+      const value = select ? String(select.value || '').trim() : '';
+      if (!value) {
+        throw new Error('Select a PETPrep container.');
+      }
+      return value;
+    }
+
+    function _resolvePetprepProjectPath(relPath) {
+      const cleaned = String(relPath || '').trim().replace(/^\/+/, '');
+      if (!cleaned) return '';
+      return _projectRoot ? (_projectRoot.replace(/\/+$/, '') + '/' + cleaned) : cleaned;
+    }
+
+    async function _loadPetprepContainerFiles() {
+      const select = document.getElementById('petprep-container-select');
+      if (!select) return;
+      select.disabled = true;
+      select.innerHTML = '<option value="">Loading PETPrep containers...</option>';
+
+      try {
+        const res = await fetch(_addToken('/petprep-get-container-files'));
+        if (res.status === 401 && window._handleAuthError) {
+          window._handleAuthError();
+          return;
+        }
+        if (!res.ok) {
+          throw new Error('Failed to load PETPrep containers (HTTP ' + res.status + ')');
+        }
+        const data = await res.json();
+        _petprepContainerFiles = Array.isArray(data.container_files) ? data.container_files : [];
+        if (!_petprepContainerFiles.length) {
+          select.innerHTML = '<option value="">No PETPrep containers found</option>';
+          select.disabled = true;
+          _setPetprepStatus('No container paths containing "petprep" were found under /scratch/singularityContainers.', 'warn');
+          return;
+        }
+
+        select.innerHTML = _petprepContainerFiles.map((path, index) => '<option value="' + escAttr(path) + '"' + (index === 0 ? ' selected' : '') + '>' + esc(path) + '</option>').join('');
+        select.disabled = false;
+        _setPetprepStatus('Loaded ' + _petprepContainerFiles.length + ' PETPrep containers', 'ok');
+      } catch (err) {
+        console.error('Failed to load PETPrep containers:', err);
+        select.innerHTML = '<option value="">Failed to load PETPrep containers</option>';
+        select.disabled = true;
+        _setPetprepStatus(err.message || 'Failed to load PETPrep containers.', 'err');
+      }
+    }
+
+    function _buildPetprepCommand() {
+      const bidsPath = _resolvePetprepProjectPath(document.getElementById('petprep-bids-path').value);
+      const outPath = _resolvePetprepProjectPath(document.getElementById('petprep-out-path').value);
+      const licensePath = _resolvePetprepProjectPath(document.getElementById('petprep-license-path').value);
+      const tempflowPath = _resolvePetprepProjectPath(document.getElementById('petprep-tempflow-path').value);
+      const containerPath = _getPetprepSelectedContainer();
+      const participant = String(document.getElementById('petprep-participant').value || '').trim();
+      const skipValidation = !!document.getElementById('petprep-skip-validation')?.checked;
+      const continuation = '\\';
+
+      if (!bidsPath) throw new Error('BIDS input directory is required.');
+      if (!outPath) throw new Error('Output directory is required.');
+      if (!licensePath) throw new Error('License file path is required.');
+      if (!tempflowPath) throw new Error('Temp cache / templateflow directory is required.');
+
+      const lines = [
+        'singularity run ' + continuation,
+        '  --cleanenv ' + continuation,
+        '  --bind ' + bidsPath + ':/bids:ro ' + continuation,
+        '  --bind ' + outPath + ':/out ' + continuation,
+        '  --bind ' + licensePath + ':/license:ro ' + continuation,
+        '  --bind ' + tempflowPath + ':/templateflow ' + continuation,
+        '  --env TEMPLATEFLOW_HOME=/templateflow ' + continuation,
+        '  --env MPLCONFIGDIR=/templateflow/matplotlib ' + continuation,
+        '  ' + containerPath + ' ' + continuation,
+        '  /bids /out participant ' + continuation,
+      ];
+
+      if (skipValidation) {
+        lines.push('  --skip_bids_validation ' + continuation);
+      }
+      if (participant) {
+        lines.push('  --participant-label ' + participant + ' ' + continuation);
+      }
+      lines.push('  --fs-license-file /license ' + continuation);
+      lines.push('  --work-dir /out/work');
+      return lines.join('\n');
+    }
+
+    async function _savePetprepCommandText(cmd) {
+      try {
+        const res = await fetch(_addToken('/petprep-save-command'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: cmd }),
+        });
+        return res.ok;
+      } catch (err) {
+        console.error('Failed to save PETPrep command:', err);
+        return false;
+      }
+    }
+
+    async function loadPetprepCommand() {
+      try {
+        _setPetprepRunStatus('Loading saved command...', 'warn');
+        const res = await fetch(_addToken('/petprep-load-command'));
+        if (res.status === 404) {
+          _setPetprepRunStatus('No saved command found.', 'warn');
+          return;
+        }
+        if (!res.ok) {
+          throw new Error('Failed to load saved command (HTTP ' + res.status + ')');
+        }
+        const data = await res.json();
+        const cmd = String(data.command || '').trim();
+        if (!cmd) {
+          _setPetprepRunStatus('Saved command is empty.', 'warn');
+          return;
+        }
+        _petprepCurrentCommand = cmd;
+        _setPetprepCommandDisplay(cmd);
+        document.getElementById('petprep-run-btn').disabled = false;
+        document.getElementById('petprep-copy-btn').disabled = false;
+        document.getElementById('petprep-save-btn').disabled = false;
+        _setPetprepRunStatus('Loaded saved command', 'ok');
+      } catch (err) {
+        console.error('loadPetprepCommand error:', err);
+        _setPetprepRunStatus('Error loading command: ' + err.message, 'err');
+      }
+    }
+
+    function generatePetprepCommand() {
+      try {
+        const cmd = _buildPetprepCommand();
+        _petprepCurrentCommand = cmd;
+        _setPetprepCommandDisplay(cmd);
+        document.getElementById('petprep-run-btn').disabled = false;
+        document.getElementById('petprep-copy-btn').disabled = false;
+        document.getElementById('petprep-save-btn').disabled = false;
+        _setPetprepStatus('Command generated successfully (not saved)', 'ok');
+        _setPetprepRunOutput('Generated command is ready to run.\n\n' + cmd, 'Ready');
+      } catch (err) {
+        console.error('generatePetprepCommand error:', err);
+        _petprepCurrentCommand = '';
+        _setPetprepCommandDisplay('');
+        document.getElementById('petprep-run-btn').disabled = true;
+        document.getElementById('petprep-copy-btn').disabled = true;
+        document.getElementById('petprep-save-btn').disabled = true;
+        _setPetprepStatus('Error: ' + err.message, 'err');
+      }
+    }
+
+    async function savePetprepCommand() {
+      if (!_petprepCurrentCommand) {
+        _setPetprepRunStatus('No command to save.', 'warn');
+        return;
+      }
+      try {
+        // Check if a saved command already exists
+        const check = await fetch(_addToken('/petprep-load-command'));
+        if (check.ok) {
+          const ok = confirm('A saved PETPrep command already exists. Overwrite?');
+          if (!ok) {
+            _setPetprepRunStatus('Save cancelled', 'warn');
+            return;
+          }
+        }
+        const saved = await _savePetprepCommandText(_petprepCurrentCommand);
+        if (saved) {
+          _setPetprepRunStatus('Command saved', 'ok');
+        } else {
+          _setPetprepRunStatus('Failed to save command', 'err');
+        }
+      } catch (err) {
+        console.error('savePetprepCommand error:', err);
+        _setPetprepRunStatus('Error saving command: ' + err.message, 'err');
+      }
+    }
+
+    function copyPetprepCommand() {
+      if (!_petprepCurrentCommand) {
+        _setPetprepRunStatus('No command to copy.', 'warn');
+        return;
+      }
+      navigator.clipboard.writeText(_petprepCurrentCommand).then(() => {
+        _setPetprepRunStatus('Command copied to clipboard', 'ok');
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        _setPetprepRunStatus('Failed to copy command', 'err');
+      });
+    }
+
+    async function runPetprepInTerminal() {
+      if (!_petprepCurrentCommand) {
+        alert('Generate or load a command first.');
+        return;
+      }
+      try {
+        document.getElementById('petprep-run-btn').disabled = true;
+        _setPetprepRunStatus('Starting PETPrep...', 'warn');
+        _clearPetprepRunOutput('Starting');
+        _appendPetprepRunOutput('Launching PETPrep...');
+        _appendPetprepRunOutput('');
+        _appendPetprepRunOutput(_petprepCurrentCommand);
+        const res = await fetch(_addToken('/petprep-run-command'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: _petprepCurrentCommand }),
+        });
+        if (!res.ok) throw new Error('Run request failed (HTTP ' + res.status + ')');
+        const data = await res.json();
+        _appendPetprepRunOutput('Started process PID ' + (data.pid || 'unknown') + '.\nLog: ' + (data.log || 'utils/petprep_run.log'), 'Running');
+        _setPetprepRunStatus('Started (pid=' + (data.pid || 'unknown') + '), log: ' + (data.log || 'petprep_run.log'), 'ok');
+        _startPetprepRunPolling();
+      } catch (err) {
+        console.error('runPetprepInTerminal error:', err);
+        _setPetprepRunStatus('Error: ' + err.message, 'err');
+      } finally {
+        document.getElementById('petprep-run-btn').disabled = false;
+      }
+    }
+
+    return {
+
+      switchSubTab,
+      runOverview,
+      runRawDataOverview,
+      toggleCell,
+      updateState,
+      updateDatatype,
+      updateSuffix,
+      updateOtherSuffix,
+      generateConfig,
+      appendToConfig,
+      loadConfigToTable,
+      discoverSessions,
+      bidsSelectAll,
+      validateRecodeInput,
+      debouncedSaveRecode,
+      runDcm2bids,
+      loadCsvFile,
+      initializeTargetFromSource,
+      closeInitTargetDialog,
+      refreshInitTargetConfirmState,
+      executeInitializeTargetFromSource,
+      loadTargetFile,
+      saveTargetFile,
+      showResetDialog,
+      closeResetDialog,
+      refreshResetConfirmState,
+      executeResetTargetFile,
+      showMergeDialog,
+      closeMergeDialog,
+      mergeFileSelected,
+      executeMerge,
+      refreshEditability,
+      // New PET QC functions
+      initializePetQc: inspectPetQcTransferLog,
+      inspectPetQcTransferLog,
+      createPetQcFromTransferLog,
+      closePetQcCreateDialog,
+      refreshPetQcCreateConfirm,
+      executePetQcCreateFromTransferLog,
+      loadPetQcFile,
+      savePetQcFile,
+      showPetQcRestartDialog,
+      closePetQcRestartDialog,
+      refreshPetQcRestartConfirm,
+      executePetQcRestart,
+      showPetQcMergeDialog,
+      closePetQcMergeDialog,
+      executePetQcMerge,
+      // PETPrep functions
+      generatePetprepCommand,
+      loadPetprepCommand,
+      savePetprepCommand,
+      copyPetprepCommand,
+      runPetprepInTerminal,
+      onTabSwitch(_name) {
+        const rawPane = document.getElementById('pet-tab-raw');
+        const editorPane = document.getElementById('pet-tab-editor');
+        if (rawPane && rawPane.classList.contains('active')) {
+          loadHelperSummary(true);
+        }
+        if (editorPane && editorPane.classList.contains('active')) {
+          loadConfigEditor();
+        }
+      },
+      validateEditorJson,
+      updateLineNumbers,
+      syncLineScroll,
+      loadConfigEditor,
+      saveConfigEditor,
+      init: (token) => {
+        const urlToken = new URLSearchParams(window.location.search).get('token');
+        _token = token || urlToken || null;
+        initializeAndLoad();
+        loadHelperSummary(true);
+        _loadPetQcTransferLogFiles();
+        const select = document.getElementById('petqc-transfer-log-select');
+        if (select) {
+          select.addEventListener('change', _updatePetQcTransferLogPreview);
+        }
+      },
+    };
+  })();
+
+  function tabInit_pet_bids(token) {
+    petBids.init(token);
+  }
+
+// Register with the shell so tab-switch notifications reach this module.
+if (typeof registerTabModule === 'function') registerTabModule('pet-bids', petBids);

@@ -150,7 +150,7 @@ def _rate_limit_check(client_ip, path=None):
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 def _check_auth(request_path, query_params):
-    if request_path in ('/', '/index.html'):
+    if request_path in ('/', '/index.html', '/common.css', '/common.js'):
         return True
     token = query_params.get('token', [None])[0]
     return bool(token and hmac.compare_digest(token, AUTH_TOKEN))
@@ -282,6 +282,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 }
                 visible = [overview_tab] + visible
             self._send_json(visible)
+            return
+
+        if path in ('/common.css', '/common.js'):
+            asset_file = os.path.join(_SCRIPT_DIR, path.lstrip('/'))
+            if not os.path.isfile(asset_file):
+                self.send_error(404, "Asset not found")
+                return
+            content_type = 'text/css; charset=utf-8' if path.endswith('.css') else 'application/javascript; charset=utf-8'
+            with open(asset_file, 'rb') as fh:
+                body = fh.read()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         if path == '/overview-file':

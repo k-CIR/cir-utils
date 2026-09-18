@@ -4,11 +4,18 @@
 This module is intentionally declarative. Constants here are not yet wired into
 all implementations, but are defined to keep naming and defaults consistent.
 """
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ----------------------------------------------------------------------------
 # Project / filesystem roots
 # ----------------------------------------------------------------------------
-PROJECTS_ROOT = '/data/projects'
+# Central override for local/dev environments. Set PROJECTS_ROOT in a .env
+# file at the repo root; falls back to the historical default otherwise.
+PROJECTS_ROOT = os.environ.get('PROJECTS_ROOT', '/data/projects')
 
 # Common relative directories under a project
 DEFAULT_RAW_DIR = 'raw'
@@ -32,8 +39,12 @@ DEFAULT_PORT_SCAN_ATTEMPTS = 10
 DEFAULT_RATE_LIMIT_PER_MINUTE = 75
 AUTH_TOKEN_BYTES_URLSAFE = 16
 
+# Central static assets (shared CSS/JS shell, extracted from index.html)
+API_COMMON_CSS = '/common.css'
+API_COMMON_JS = '/common.js'
+
 # Public paths that do not require token auth
-AUTH_EXEMPT_PATHS = ('/', '/index.html')
+AUTH_EXEMPT_PATHS = ('/', '/index.html', API_COMMON_CSS, API_COMMON_JS)
 
 # ----------------------------------------------------------------------------
 # Tab metadata defaults
@@ -41,6 +52,13 @@ AUTH_EXEMPT_PATHS = ('/', '/index.html')
 TAB_ID_MR = 'mr-bids'
 TAB_ID_PET = 'pet-bids'
 TAB_ID_MEG = 'meg-bids'
+
+# Per-tab static asset routes (served via tab_assets.register in each
+# tab's routes.py)
+MR_ASSET_JS = '/mr-tab.js'
+MR_ASSET_CSS = '/mr-tab.css'
+PET_ASSET_JS = '/pet-tab.js'
+PET_ASSET_CSS = '/pet-tab.css'
 
 TAB_LABEL_MR = 'MR BIDS'
 TAB_LABEL_PET = 'PET BIDS'

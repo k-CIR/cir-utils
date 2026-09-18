@@ -20,14 +20,31 @@ def _strip_ansi(text):
 import sys
 _TAB_DIR = os.path.dirname(os.path.abspath(__file__))
 
+_REPO_ROOT = os.path.realpath(os.path.join(_TAB_DIR, "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import tab_assets
+
 
 def _detect_project_root(script_dir):
-    """Return /data/projects/<project> for nested repo locations."""
+    """Resolve the active project root directory.
+
+    Resolution order:
+      1. PROJECTS_ROOT + PROJECT_NAME (env vars, e.g. from .env or --project)
+         — explicit override, primarily for local/dev testing off SPICE.
+      2. Auto-detected /data/projects/<project> for nested repo locations.
+      3. Fallback: tab dir is <project>/cir-utils/tabs/<tab>
+    """
+    projects_root = os.environ.get("PROJECTS_ROOT")
+    project_name = os.environ.get("PROJECT_NAME")
+    if projects_root and project_name:
+        return os.path.realpath(os.path.join(projects_root, project_name))
+
     resolved = os.path.realpath(script_dir)
     match = re.match(r"^(/data/projects/[^/]+)(?:/|$)", resolved)
     if match:
         return match.group(1)
-    # Fallback: tab dir is <project>/cir-utils/tabs/<tab>
     return os.path.realpath(os.path.join(script_dir, "..", "..", ".."))
 
 _CFG_PATH = os.path.join(_TAB_DIR, "config_builder.py")
@@ -345,6 +362,10 @@ def _handle_run_dcm2bids(h, body):
 
 def register(get_routes, post_routes):
     """Populate get_routes and post_routes with this tab's endpoints."""
+    tab_assets.register(
+        get_routes, _TAB_DIR,
+        js_route="/mr-tab.js", js_file="mr-tab.js",
+    )
     get_routes["/mr-get-config"]           = _handle_get_config
     get_routes["/mr-get-helper-summary"]   = _handle_get_helper_summary
     get_routes["/mr-get-bids-config"]      = _handle_get_bids_config

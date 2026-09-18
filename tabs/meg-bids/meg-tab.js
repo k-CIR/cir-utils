@@ -2724,6 +2724,11 @@
     }
   };
 
+  // Register with the shell so tab-switch notifications reach this module
+  // (harmless no-op today since megBids has no onTabSwitch, but keeps every
+  // tab on the same registration contract).
+  if (typeof registerTabModule === 'function') registerTabModule('meg-bids', megBids);
+
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => megBids.init());
