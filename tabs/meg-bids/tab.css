@@ -177,6 +177,14 @@
   color: #cca700;
 }
 
+/* Field Hint */
+.field-hint {
+  font-size: 0.75rem;
+  color: #8a8a8a;
+  margin-top: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
 /* Tags Input */
 .tags-input-container {
   background: #1e1e1e;

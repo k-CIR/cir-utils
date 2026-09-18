@@ -78,8 +78,9 @@
           <label>Config File <span id="val-config" class="path-validation"></span></label>
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixConfig">/data/projects/.../</span>
-              <input type="text" id="megCfgConfigFile" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()">
+              <input type="text" id="megCfgConfigFile" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()" title="This is the file that was last loaded and where Save will write. Editing this path changes the Save target, not just the display.">
           </div>
+          <div class="field-hint">Currently loaded file &amp; save target. Changing this path redirects where Save writes.</div>
         </div>
         <br>
         <div class="json-header">

@@ -407,7 +407,15 @@
         bids_dir: this.toProjectRelativePath(serverConfig.BIDS, MEG_CONSTANTS.defaults.bids_dir),
         tasks: serverConfig.Tasks || [],
         conversion_file: this.toProjectRelativePath(serverConfig.Conversion_file, MEG_CONSTANTS.defaults.conversion_file),
-        config_file: this.toProjectRelativePath(serverConfig.config_file, MEG_CONSTANTS.defaults.config_file)
+        // The "currently loaded file" must always be the real path this file was
+        // just loaded from (data.path, falling back to the requested configPath),
+        // never a name baked into the file's own JSON content. A config file can be
+        // freely copied/renamed on disk, at which point any self-referential name
+        // stored inside it goes stale; worse, load_minimal_config() doesn't even
+        // pass such a field through, so relying on it silently resets tracking to
+        // the hard-coded default filename regardless of what was actually opened,
+        // which risks Save silently overwriting the wrong file.
+        config_file: this.toProjectRelativePath(data.path || configPath, MEG_CONSTANTS.defaults.config_file)
       };
 
       const rawEl = this.getEl('rawDir');
@@ -726,14 +734,21 @@
     },
 
     saveConfigToFile: async function() {
-      // Convert to server format
+      // Convert to server format. Deliberately does NOT include config_file:
+      // baking the file's own name into its own content is meaningless (nothing
+      // ever reads it back - see load_minimal_config's documented schema) and
+      // actively harmful, since the name goes stale the moment the file is
+      // copied/renamed on disk, which previously caused the UI's "currently
+      // loaded file" tracking to reset to the default filename on every load.
+      // The target filename is only ever passed as the separate top-level
+      // config_file field below, telling the backend where to write - it is
+      // never persisted inside the file itself.
       const serverConfig = {
         project_name: this.config.project_name,
         raw_dir: this.config.raw_dir,
         bids_dir: this.config.bids_dir,
         tasks: this.config.tasks,
-        conversion_file: this.config.conversion_file,
-        config_file: this.config.config_file
+        conversion_file: this.config.conversion_file
       };
 
       const configFileName = this.config.config_file || MEG_CONSTANTS.defaults.config_file;
@@ -2003,6 +2018,13 @@
               .map((row, idx) => idx)
               .filter(idx => {
                 const row = megBids.tableData[idx];
+                // A row must belong to the currently displayed view bucket AND be
+                // individually selectable there. `isStageEligible` alone is not
+                // enough: it also matches not-yet-staged 'processed' rows, which
+                // `stageBucketFor` places in the read-only 'finished' bucket, not
+                // 'unstaged'. Without the bucket check, "select all" on the
+                // Unstaged view would silently pull in invisible Finished rows.
+                if (this.stageBucketFor(row) !== this.stageView) return false;
                 if (this.stageView === 'unstaged') return this.isStageEligible(row);
                 if (this.stageView === 'staged') return this.getRowStaged(row);
                 return false;
@@ -2285,6 +2307,7 @@
         let progressTimer = null;
         let progressValue = 0;
         let displayedVerboseErrors = 0;
+        let displayedStaleRemovals = 0;
 
         const setProgress = (value, text) => {
           const clamped = Math.max(0, Math.min(100, value));
@@ -2335,6 +2358,27 @@
           });
 
           displayedVerboseErrors = totalErrorItems;
+        };
+
+        // Always shown (not gated behind verbose): a row's previous output
+        // being deleted and replaced is a destructive side effect the user
+        // should see regardless of the verbose-logging setting.
+        const appendStaleRemovals = (job) => {
+          if (!output || !job || !Array.isArray(job.recent_stale_removals)) return;
+          const total = job.recent_stale_removals.length;
+          if (total <= displayedStaleRemovals) return;
+
+          const newItems = job.recent_stale_removals.slice(displayedStaleRemovals);
+          newItems.forEach((item) => {
+            const rawName = item?.raw_name || 'unknown file';
+            const oldName = item?.old_name || '(previous output)';
+            const newName = item?.new_name || '(new output)';
+            const count = Array.isArray(item?.removed) ? item.removed.length : 0;
+            output.textContent += `\nReplacing previous output for ${rawName}: "${oldName}" -> "${newName}" ` +
+              `(removed ${count} old file${count === 1 ? '' : 's'})`;
+          });
+
+          displayedStaleRemovals = total;
         };
 
         const refreshConversionTable = async () => {
@@ -2423,8 +2467,44 @@
           const setupWeight = 8;
           const writeWeight = 88;
 
+          let consecutivePollFailures = 0;
+          const maxConsecutivePollFailures = 10;
+
           while (true) {
-            const progressRes = await fetch(Utils.apiPath(`${MEG_CONSTANTS.api.bidsifyProgress}?job_id=${encodeURIComponent(jobId)}`));
+            let progressRes;
+            try {
+              progressRes = await fetch(Utils.apiPath(`${MEG_CONSTANTS.api.bidsifyProgress}?job_id=${encodeURIComponent(jobId)}`));
+            } catch (networkErr) {
+              progressRes = null;
+            }
+
+            // A non-2xx response (rate limited, transient 5xx, brief server
+            // restart, etc.) does not mean the conversion itself failed - the
+            // job keeps running server-side independently of this poller.
+            // Calling .json() on such a response is also what previously
+            // produced a confusing "JSON.parse: unexpected character..."
+            // error instead of a clear message, since error pages aren't JSON.
+            // Back off and retry a bounded number of times instead of
+            // immediately declaring the whole conversion failed.
+            if (!progressRes || !progressRes.ok) {
+              consecutivePollFailures += 1;
+              if (consecutivePollFailures > maxConsecutivePollFailures) {
+                setProgress(Math.max(progressValue, 95), 'Conversion status unknown');
+                if (output) {
+                  output.textContent += '\nLost contact with the server while checking conversion progress ' +
+                    '(repeated non-JSON/error responses). The conversion may still be running on the server; ' +
+                    'reload the page to check its status.';
+                }
+                megBids.setStatus('megConversionStatus', 'Progress check failed - conversion may still be running', 'warn');
+                break;
+              }
+              const statusNote = progressRes ? `HTTP ${progressRes.status}` : 'network error';
+              if (output) output.textContent += `\n(progress check got ${statusNote}, retrying...)`;
+              await new Promise((resolve) => window.setTimeout(resolve, 1500));
+              continue;
+            }
+            consecutivePollFailures = 0;
+
             const progressData = await progressRes.json();
 
             if (progressData.error || !progressData.job) {
@@ -2437,6 +2517,7 @@
             stopProgressAnimation();
             const job = progressData.job;
             appendVerboseErrors(job);
+            appendStaleRemovals(job);
             const total = Math.max(0, Number(job.total || 0));
             const processed = Math.max(0, Number(job.processed || 0));
             const errors = Math.max(0, Number(job.errors || 0));
@@ -2484,7 +2565,7 @@
               break;
             }
 
-            await new Promise((resolve) => window.setTimeout(resolve, 700));
+            await new Promise((resolve) => window.setTimeout(resolve, 1000));
           }
         } catch (e) {
           stopProgressAnimation();

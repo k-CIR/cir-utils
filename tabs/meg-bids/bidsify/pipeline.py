@@ -18,7 +18,7 @@ from mne_bids import write_meg_calibration, write_meg_crosstalk
 from tqdm import tqdm
 
 from .constants import HEADPOS_PATTERNS
-from .conversion_table import load_conversion_table, update_conversion_table, _record_processing_success, get_row_staged, _set_staged
+from .conversion_table import load_conversion_table, update_conversion_table, _record_processing_success, get_row_staged, _set_staged, get_last_output, set_last_output
 from .parsing import bids_path_from_rawname, get_split_file_parts
 from .sidecars import add_channel_parameters, copy_eeg_to_meg, update_sidecars
 from .templates import create_dataset_description, create_proc_description
@@ -78,10 +78,24 @@ def _cleanup_stale_bids_output(old_bids_path, old_bids_name, new_fpath: str, bid
         print(f"Could not resolve BIDS entities for stale output {old_fpath}, falling back to exact match: {e}")
         stale_candidates = [old_fpath] if exists(old_fpath) else []
 
+    # When the old entity set is a strict subset of the new one (e.g. the old
+    # output had no run entity and the new one adds run-01), BIDSPath.match()
+    # does not exclude files that also carry the extra entity - so the old
+    # entity search above can incorrectly also match the *new* file's own
+    # sidecars (e.g. its .json). Resolve the new file's full family the same
+    # way and exclude every member of it, not just the single new_fpath.
+    new_family = {new_fpath_norm}
+    try:
+        new_entity_path = get_bids_path_from_fname(new_fpath_norm, check=False)
+        new_entity_path.update(suffix=None, extension=None, split=None, check=False)
+        new_family.update(str(p.fpath) for p in new_entity_path.match(ignore_json=False))
+    except Exception as e:
+        print(f"Could not resolve BIDS entities for new output {new_fpath_norm}, only excluding exact match: {e}")
+
     removed = []
     for stale in stale_candidates:
         stale_norm = os.path.normpath(stale)
-        if stale_norm == new_fpath_norm or not _inside_root(stale_norm):
+        if stale_norm in new_family or not _inside_root(stale_norm):
             continue
         try:
             os.remove(stale_norm)
@@ -243,6 +257,8 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
     errors_now = 0
     recent_errors = []
     max_recent_errors = 25
+    recent_stale_removals = []
+    max_recent_stale_removals = 25
     for i, d in df[process_mask].iterrows():
         try:
             pcount += 1
@@ -369,9 +385,21 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
                 add_channel_parameters(bids_tsv, opm_tsv)
 
             try:
+                # The row's live bids_path/bids_name columns already reflect
+                # the *new* target the moment an entity edit is saved in the
+                # Editor - well before staging/conversion ever runs. By the
+                # time we get here they can no longer tell us what was
+                # actually on disk from the previous conversion, so prefer
+                # the separately-tracked last-known-good output and only fall
+                # back to the live columns for a row converted before this
+                # tracking existed (and not yet edited since).
+                tracked_old_path, tracked_old_name = get_last_output(d)
+                old_bids_path = tracked_old_path if tracked_old_path else d.get('bids_path')
+                old_bids_name = tracked_old_name if tracked_old_name else d.get('bids_name')
+
                 removed_stale = _cleanup_stale_bids_output(
-                    old_bids_path=d.get('bids_path'),
-                    old_bids_name=d.get('bids_name'),
+                    old_bids_path=old_bids_path,
+                    old_bids_name=old_bids_name,
                     new_fpath=str(bids_path.fpath),
                     bids_root=path_BIDS,
                     verbose=verbose,
@@ -382,6 +410,14 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
                         f"{len(removed_stale)} stale output file(s) from previous conversion: "
                         f"{', '.join(removed_stale)}"
                     )
+                    recent_stale_removals.append({
+                        'raw_name': str(d.get('raw_name', '')),
+                        'old_name': str(old_bids_name) if old_bids_name else '',
+                        'new_name': basename(bids_path),
+                        'removed': removed_stale,
+                    })
+                    if len(recent_stale_removals) > max_recent_stale_removals:
+                        recent_stale_removals = recent_stale_removals[-max_recent_stale_removals:]
             except Exception as e:
                 # A cleanup failure should never turn an otherwise-successful
                 # conversion into an error; just warn and keep going.
@@ -391,13 +427,18 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
             df = _set_staged(df, i, False)
             processed_now += 1
             df = _record_processing_success(df, i)
+            # Record what was *actually* just written, so the next
+            # reconversion's stale-output cleanup (above) has an accurate
+            # baseline even after further entity edits change bids_path/name.
+            df = set_last_output(df, i, dirname(bids_path), basename(bids_path))
             _emit_progress({
                 'stage': 'file-done',
                 'message': f"Completed file {pcount}/{n_files_to_process}",
                 'total': n_files_to_process,
                 'processed': processed_now,
                 'errors': errors_now,
-                'current_file': d.get('raw_name')
+                'current_file': d.get('raw_name'),
+                'recent_stale_removals': recent_stale_removals,
             })
 
         except Exception as e:
@@ -460,8 +501,9 @@ def bidsify(config: dict, conversion_table=None, conversion_file=None, force_sca
     summary['error_details'] = recent_errors
     summary['final_status_counts'] = final_status_counts
     summary['report_updates'] = int(report_updates or 0)
+    summary['stale_removals'] = recent_stale_removals
     summary['message'] = 'BIDS conversion completed'
-    _emit_progress({'stage': 'done', 'message': summary['message'], 'summary': summary})
+    _emit_progress({'stage': 'done', 'message': summary['message'], 'summary': summary, 'recent_stale_removals': recent_stale_removals})
     print(f"All files bidsified according to {conversion_file}")
     return summary
 

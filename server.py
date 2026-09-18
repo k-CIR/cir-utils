@@ -24,6 +24,7 @@ os.environ["PATH"] = os.pathsep.join([_conda_env_bin] + _system_path_entries)
 if os.path.isfile(_conda_python) and os.path.realpath(sys.executable) != os.path.realpath(_conda_python):
     os.execv(_conda_python, [_conda_python] + sys.argv)
 
+import argparse
 import http.server
 import importlib.util
 import json
@@ -34,6 +35,30 @@ import hmac
 import secrets
 import signal
 import atexit
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description="BIDS Utils MR server")
+    parser.add_argument(
+        "--project",
+        dest="project",
+        default=None,
+        help=(
+            "Project name under PROJECTS_ROOT to use as the active project. "
+            "Optional; overrides the PROJECT_NAME env var. Used together with "
+            "PROJECTS_ROOT (env or .env) for local/dev testing outside SPICE."
+        ),
+    )
+    return parser.parse_args()
+
+
+_ARGS = _parse_args()
+if _ARGS.project:
+    os.environ["PROJECT_NAME"] = _ARGS.project
 
 PORT       = int(os.environ.get("PORT", 8080))
 AUTH_TOKEN = os.environ.get("AUTH_TOKEN") or secrets.token_urlsafe(16)
@@ -97,8 +122,21 @@ signal.signal(signal.SIGTERM, signal_handler)
 _request_times = {}
 _RATE_LIMIT    = 75  # max requests per minute per IP
 
+# Paths exempt from the per-IP rate limit: fast, cheap polling endpoints tied
+# to a single already-running background job. A long-running job (e.g. a MEG
+# BIDS conversion) is polled every ~700ms by design, which structurally exceeds
+# _RATE_LIMIT within about a minute of any real conversion. Rate-limiting that
+# poll doesn't protect anything (the job keeps running regardless) - it just
+# breaks the polling loop with a 429, which client code then can't tell apart
+# from a real failure. Add any other tab's progress/status-polling path here.
+_RATE_LIMIT_EXEMPT_PATHS = {
+    '/meg-bidsify-progress',
+}
 
-def _rate_limit_check(client_ip):
+
+def _rate_limit_check(client_ip, path=None):
+    if path in _RATE_LIMIT_EXEMPT_PATHS:
+        return True
     now = time.time()
     if client_ip in _request_times:
         _request_times[client_ip] = [t for t in _request_times[client_ip] if now - t < 60]
@@ -144,17 +182,24 @@ _TABS        = []   # list of TAB_METADATA dicts, sorted by "order"
 
 
 def _detect_project_root(script_dir):
-    """Return /data/projects/<PROJECT_NAME> for any nested repo location.
+    """Resolve the active project root directory.
 
-    This keeps tab visibility checks stable even if this repository is moved
-    deeper under utility folders.
+    Resolution order:
+      1. PROJECTS_ROOT + PROJECT_NAME (env vars, e.g. from .env or --project)
+         — explicit override, primarily for local/dev testing off SPICE.
+      2. Auto-detected /data/projects/<name> from this file's real path.
+      3. Fallback for non-standard deployments where the repo lives directly
+         inside the project folder (e.g. /some/path/<project>/cir-utils).
     """
+    projects_root = os.environ.get("PROJECTS_ROOT")
+    project_name = os.environ.get("PROJECT_NAME")
+    if projects_root and project_name:
+        return os.path.realpath(os.path.join(projects_root, project_name))
+
     resolved = os.path.realpath(script_dir)
     m = re.match(r"^(/data/projects/[^/]+)(?:/|$)", resolved)
     if m:
         return m.group(1)
-    # Fallback for non-standard deployments where the repo lives directly
-    # inside the project folder (e.g. /some/path/<project>/cir-utils).
     return os.path.realpath(os.path.join(script_dir, ".."))
 
 
@@ -212,13 +257,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         from urllib.parse import urlparse, parse_qs
         client_ip = self.client_address[0]
-        if not _rate_limit_check(client_ip):
-            self.send_error(429, "Too many requests")
-            return
 
         parsed = urlparse(self.path)
         query  = parse_qs(parsed.query)
         path   = parsed.path
+
+        if not _rate_limit_check(client_ip, path):
+            self.send_error(429, "Too many requests")
+            return
 
         if not _check_auth(path, query):
             self._send_auth_error()
@@ -290,13 +336,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         from urllib.parse import urlparse, parse_qs
         client_ip = self.client_address[0]
-        if not _rate_limit_check(client_ip):
-            self.send_error(429, "Too many requests")
-            return
 
         parsed = urlparse(self.path)
         query  = parse_qs(parsed.query)
         path   = parsed.path
+
+        if not _rate_limit_check(client_ip, path):
+            self.send_error(429, "Too many requests")
+            return
 
         if not _check_auth(path, query):
             self._send_auth_error()
@@ -322,6 +369,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def send_error(self, code, message=None, explain=None):
+        """Override the stdlib default, which renders an HTML error page.
+
+        Every client here (fetch(...).then(r => r.json())) expects a JSON body
+        on every response, success or failure. Returning HTML for 4xx/5xx makes
+        any such failure surface client-side as a confusing
+        "JSON.parse: unexpected character..." error instead of the actual
+        error message. This keeps the wire format consistent with _send_json.
+        """
+        try:
+            self.log_error("code %d, message %s", code, message)
+        except Exception:
+            pass
+        try:
+            short_msg, long_msg = self.responses.get(code, (str(code), ""))
+        except Exception:
+            short_msg, long_msg = str(code), ""
+        payload = {"error": message or short_msg}
+        if explain:
+            payload["detail"] = explain
+        body = json.dumps(payload).encode()
+        try:
+            self.send_response(code, message or short_msg)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+        except Exception:
+            pass
 
     def _send_auth_error(self):
         body = b"""<!DOCTYPE html>

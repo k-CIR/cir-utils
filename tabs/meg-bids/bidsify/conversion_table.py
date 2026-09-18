@@ -294,6 +294,14 @@ def _build_row_metadata(row, refreshed_at):
 
     staged_value = bool(tracking_existing.get('staged', False))
 
+    # The output path/name a row was actually last converted to, distinct
+    # from the live bids_path/bids_name columns (which reflect the *next*,
+    # possibly-edited-but-not-yet-converted target). Preserved verbatim so a
+    # later reload never loses track of what a prior successful conversion
+    # actually wrote to disk.
+    last_bids_path_value = tracking_existing.get('last_bids_path')
+    last_bids_name_value = tracking_existing.get('last_bids_name')
+
     metadata.update({
         'schema_version': 1,
         'refreshed_at': refreshed_at,
@@ -306,6 +314,8 @@ def _build_row_metadata(row, refreshed_at):
             'status_history': _parse_status_history(history_source),
             'notes': None if _is_missing_scalar(notes_value) else str(notes_value),
             'staged': staged_value,
+            'last_bids_path': None if _is_missing_scalar(last_bids_path_value) else str(last_bids_path_value),
+            'last_bids_name': None if _is_missing_scalar(last_bids_name_value) else str(last_bids_name_value),
         },
     })
     return metadata
@@ -353,6 +363,42 @@ def _set_staged(table: pd.DataFrame, row_idx, staged: bool) -> pd.DataFrame:
     metadata = _parse_metadata_object(table.at[row_idx, 'metadata'])
     tracking = metadata.get('tracking', {}) if isinstance(metadata.get('tracking'), dict) else {}
     tracking['staged'] = bool(staged)
+    metadata['tracking'] = tracking
+    table.at[row_idx, 'metadata'] = json.dumps(metadata, default=str)
+    return table
+
+
+def get_last_output(row) -> tuple:
+    """Return (bids_path, bids_name) of the last output a row's raw file was
+    *actually* successfully written to, as recorded by `set_last_output`.
+
+    This deliberately does NOT read the row's live `bids_path`/`bids_name`
+    columns. Editing a row's entities in the UI (e.g. adding a run number)
+    rewrites those columns to the *new*, not-yet-converted target as soon as
+    the edit is saved - well before the row is staged and reconverted. By the
+    time a reconversion actually runs, the live columns already equal the new
+    target, so they can never be used to detect what the previous, now-stale
+    output on disk was. This tracked value is only ever updated right after a
+    real successful write (see `set_last_output`), so it always reflects what
+    is genuinely still sitting on disk from the last conversion, independent
+    of any entity edits made since.
+    """
+    metadata = _parse_metadata_object(row.get('metadata') if hasattr(row, 'get') else row)
+    tracking = metadata.get('tracking', {}) if isinstance(metadata.get('tracking'), dict) else {}
+    return tracking.get('last_bids_path'), tracking.get('last_bids_name')
+
+
+def set_last_output(table: pd.DataFrame, row_idx, bids_path: str, bids_name: str) -> pd.DataFrame:
+    """Record the output path/name a row was just successfully converted to.
+
+    Called right after a successful write, using the actual just-written
+    path - never the (potentially since-edited) live columns. This is the
+    baseline the *next* reconversion's stale-output cleanup compares against.
+    """
+    metadata = _parse_metadata_object(table.at[row_idx, 'metadata'])
+    tracking = metadata.get('tracking', {}) if isinstance(metadata.get('tracking'), dict) else {}
+    tracking['last_bids_path'] = str(bids_path)
+    tracking['last_bids_name'] = str(bids_name)
     metadata['tracking'] = tracking
     table.at[row_idx, 'metadata'] = json.dumps(metadata, default=str)
     return table
@@ -414,6 +460,73 @@ def _record_processing_success(table: pd.DataFrame, row_idx) -> pd.DataFrame:
         tracking['notes'] = None
     metadata['tracking'] = tracking
     table.at[row_idx, 'metadata'] = json.dumps(metadata, default=str)
+    return table
+
+
+_DUPLICATE_OUTPUT_NOTE_PREFIX = "[auto] Output path collides with"
+
+
+def _flag_duplicate_outputs(table: pd.DataFrame) -> pd.DataFrame:
+    """Detect rows whose resolved BIDS output path collides with another
+    row's (e.g. two raw recordings for the same task/acquisition where
+    neither raw filename encodes a run number, so both resolve to an
+    identical bids_path/bids_name).
+
+    `run` is derived purely from the raw filename (see
+    `bids_path_from_rawname`) with no cross-row check anywhere else in the
+    pipeline. write_raw_bids only ever writes to the exact path it's given,
+    so converting two colliding rows silently makes the second overwrite the
+    first on disk - nothing else here would ever notice or warn.
+
+    Any non-'skip' row in a colliding group is set to 'check' (an existing
+    review status already excluded from client-side staging eligibility)
+    with an explanatory note, so the collision is visible and blocks
+    conversion *before* it happens. A row explicitly marked 'skip' is left
+    alone - that is an intentional user decision, not an oversight to flag.
+    Re-running this against an already-flagged table is idempotent: it only
+    ever overwrites a note it previously generated itself (identified by
+    `_DUPLICATE_OUTPUT_NOTE_PREFIX`), never a user-authored note.
+    """
+    if table is None or table.empty:
+        return table
+
+    groups: dict = {}
+    for idx, row in table.iterrows():
+        bids_path = row.get('bids_path')
+        bids_name = row.get('bids_name')
+        if _is_missing_scalar(bids_path) or _is_missing_scalar(bids_name):
+            continue
+        key = os.path.normpath(join(str(bids_path), str(bids_name)))
+        groups.setdefault(key, []).append(idx)
+
+    for idxs in groups.values():
+        if len(idxs) < 2:
+            continue
+        for idx in idxs:
+            if table.at[idx, 'status'] == 'skip':
+                continue
+
+            other_names = ', '.join(
+                str(table.at[i, 'raw_name']) for i in idxs
+                if i != idx and not _is_missing_scalar(table.at[i, 'raw_name'])
+            )
+            note = (
+                f"{_DUPLICATE_OUTPUT_NOTE_PREFIX} {len(idxs) - 1} other row(s) "
+                f"({other_names}) - same resolved BIDS output, likely missing "
+                f"a distinguishing run entity. Assign distinct run numbers "
+                f"before converting."
+            )
+
+            table = _update_status_with_history(table, idx, 'check')
+
+            metadata = _parse_metadata_object(table.at[idx, 'metadata'])
+            tracking = metadata.get('tracking', {}) if isinstance(metadata.get('tracking'), dict) else {}
+            existing_note = tracking.get('notes')
+            if _is_missing_scalar(existing_note) or str(existing_note).startswith(_DUPLICATE_OUTPUT_NOTE_PREFIX):
+                tracking['notes'] = note
+                metadata['tracking'] = tracking
+                table.at[idx, 'metadata'] = json.dumps(metadata, default=str)
+
     return table
 
 
@@ -621,6 +734,9 @@ def _read_and_refresh_table(conversion_file: str, refresh_status: bool) -> pd.Da
     conversion_table, backfilled = _backfill_signature_columns(conversion_table)
     t_backfill = time.perf_counter()
 
+    conversion_table = _flag_duplicate_outputs(conversion_table)
+    t_duplicates = time.perf_counter()
+
     conversion_table = _refresh_metadata_column(conversion_table)
     t_metadata = time.perf_counter()
 
@@ -630,7 +746,8 @@ def _read_and_refresh_table(conversion_file: str, refresh_status: bool) -> pd.Da
         f"(read={t_read - t_start:.3f}s, normalize={t_normalize - t_read:.3f}s, "
         f"status_refresh={t_status - t_normalize:.3f}s [{'on' if refresh_status else 'off'}], "
         f"backfill={t_backfill - t_status:.3f}s [{backfilled} rows updated], "
-        f"metadata_refresh={t_metadata - t_backfill:.3f}s)"
+        f"duplicate_check={t_duplicates - t_backfill:.3f}s, "
+        f"metadata_refresh={t_metadata - t_duplicates:.3f}s)"
     )
     return conversion_table
 
@@ -681,6 +798,7 @@ def load_conversion_table(config: dict, refresh_status: bool = False):
         results = list(generate_new_conversion_table(config))
         conversion_table = pd.DataFrame(results)
         conversion_table = _normalize_table(conversion_table)
+        conversion_table = _flag_duplicate_outputs(conversion_table)
 
         conversion_table.to_csv(conversion_file, sep='\t', index=False)
         print(f"New conversion table generated and saved to {os.path.basename(conversion_file)}")
@@ -742,6 +860,7 @@ def update_conversion_table(config, conversion_file=None, force_scan: bool = Fal
 
     updated_table = pd.concat([existing_conversion_table, diff], ignore_index=True)
     updated_table, _ = _backfill_signature_columns(updated_table)
+    updated_table = _flag_duplicate_outputs(updated_table)
     updated_table = _refresh_metadata_column(updated_table)
 
     print(f"Adding {len(diff)} new files to conversion table.")
