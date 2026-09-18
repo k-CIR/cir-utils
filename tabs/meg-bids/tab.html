@@ -79,7 +79,8 @@
           <div class="path-row-compound">
             <span class="path-static-root" id="megRootPrefixConfig">/data/projects/.../</span>
               <input type="text" id="megCfgConfigFile" class="path-input-relative" placeholder="" value="" oninput="megBids.syncFormToJson()" title="This is the file that was last loaded and where Save will write. Editing this path changes the Save target, not just the display.">
-          </div>
+              <button class="btn" onclick="megBids.loadConfigFromFile()">Load from File</button>
+            </div>
           <div class="field-hint">Currently loaded file &amp; save target. Changing this path redirects where Save writes.</div>
         </div>
         <br>
@@ -92,7 +93,7 @@
         </div>
 
         <!-- View Mode: Formatted JSON -->
-        <pre id="megJsonView" class="json-display"></pre>
+        <pre id="megJsonView" class="json-display"></pre> 
 
         <!-- Edit Mode: Textarea -->
         <textarea id="megJsonEdit" class="json-editor" spellcheck="false" onblur="megBids.syncJsonToForm()"></textarea>
@@ -101,7 +102,6 @@
 
         <!-- Action Buttons -->
         <div class="form-actions">
-          <button class="btn" onclick="megBids.loadConfigFromFile()">Load from File</button>
           <button class="btn" onclick="megBids.resetDefaults()">Reset to Defaults</button>
           <button class="btn primary" onclick="megBids.saveConfigToFile()">Save Config</button>
         </div>
