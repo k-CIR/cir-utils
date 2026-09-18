@@ -595,6 +595,46 @@ def generate_new_conversion_table(config: dict, existing_table: Optional[pd.Data
         yield result
 
 
+def _read_and_refresh_table(conversion_file: str, refresh_status: bool) -> pd.DataFrame:
+    """Read a conversion table from disk and run every per-load refresh pass,
+    logging a phase-by-phase timing breakdown.
+
+    This is the full read + refresh pipeline that runs on *every* table load
+    (autoload, manual load, post-conversion refresh), regardless of how many
+    rows actually changed since the last load. For a very large table, or a
+    table on slow/networked storage, one of these phases can dominate; the
+    timing log makes that visible in the server console instead of a load
+    just silently taking a long time (or failing) with no diagnostic trail.
+    """
+    t_start = time.perf_counter()
+    conversion_table = pd.read_csv(conversion_file, sep='\t', dtype=str)
+    t_read = time.perf_counter()
+    row_count = len(conversion_table)
+
+    conversion_table = _normalize_table(conversion_table)
+    t_normalize = time.perf_counter()
+
+    if refresh_status:
+        conversion_table = _refresh_processed_status(conversion_table)
+    t_status = time.perf_counter()
+
+    conversion_table, backfilled = _backfill_signature_columns(conversion_table)
+    t_backfill = time.perf_counter()
+
+    conversion_table = _refresh_metadata_column(conversion_table)
+    t_metadata = time.perf_counter()
+
+    print(
+        f"[conversion_table] Loaded {row_count} rows from {os.path.basename(conversion_file)} "
+        f"in {t_metadata - t_start:.3f}s total "
+        f"(read={t_read - t_start:.3f}s, normalize={t_normalize - t_read:.3f}s, "
+        f"status_refresh={t_status - t_normalize:.3f}s [{'on' if refresh_status else 'off'}], "
+        f"backfill={t_backfill - t_status:.3f}s [{backfilled} rows updated], "
+        f"metadata_refresh={t_metadata - t_backfill:.3f}s)"
+    )
+    return conversion_table
+
+
 def load_conversion_table(config: dict, refresh_status: bool = False):
     """
     Load or generate conversion table for BIDS conversion process.
@@ -624,12 +664,7 @@ def load_conversion_table(config: dict, refresh_status: bool = False):
         try:
             if os.path.getsize(conversion_file) > 0:
                 print(f"Loading conversion table from {conversion_file}")
-                conversion_table = pd.read_csv(conversion_file, sep='\t', dtype=str)
-                conversion_table = _normalize_table(conversion_table)
-                if refresh_status:
-                    conversion_table = _refresh_processed_status(conversion_table)
-                conversion_table, _ = _backfill_signature_columns(conversion_table)
-                conversion_table = _refresh_metadata_column(conversion_table)
+                conversion_table = _read_and_refresh_table(conversion_file, refresh_status)
                 return conversion_table, conversion_file
             else:
                 print(f"Conversion file {conversion_file} is empty, generating new")
@@ -653,12 +688,7 @@ def load_conversion_table(config: dict, refresh_status: bool = False):
             time.sleep(0.5)
         try:
             if os.path.getsize(conversion_file) > 0:
-                conversion_table = pd.read_csv(conversion_file, sep='\t', dtype=str)
-                conversion_table = _normalize_table(conversion_table)
-                if refresh_status:
-                    conversion_table = _refresh_processed_status(conversion_table)
-                conversion_table, _ = _backfill_signature_columns(conversion_table)
-                conversion_table = _refresh_metadata_column(conversion_table)
+                conversion_table = _read_and_refresh_table(conversion_file, refresh_status)
                 return conversion_table, conversion_file
             print("Warning: Generated conversion table is empty. No files found to convert.")
             return pd.DataFrame(columns=CONVERSION_COLUMNS), conversion_file
