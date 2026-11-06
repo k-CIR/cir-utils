@@ -231,6 +231,20 @@ def bids_path_from_rawname(file_name, date_session, config, pmap=None, read_info
             print(f"Error reading file {file_name}: {e}")
             ch_types = ['']
 
+    # mne_bids only appends the extension to a BIDSPath's basename when a
+    # suffix is also set (extension attaches as "_<suffix><extension>"). If
+    # filename parsing couldn't detect a suffix (e.g. OPM/hedscan raw
+    # filenames that don't literally contain "meg"/"raw"), the extension gets
+    # silently dropped too, even though it was resolved correctly, producing a
+    # preview/output filename with no extension at all. Default the suffix
+    # from datatype so the resulting filename is always complete. This never
+    # overrides an already-resolved suffix (e.g. trans/headshape/eeg set
+    # above), and intentionally leaves `extension` untouched: an empty
+    # extension for eeg is a deliberate signal to let mne_bids/write_raw_bids
+    # infer the real format-specific extension at write time.
+    if not suffix:
+        suffix = 'eeg' if datatype == 'eeg' else 'meg'
+
     try:
         bids_path = BIDSPath(
             root=bids_root,

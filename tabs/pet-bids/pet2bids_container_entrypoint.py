@@ -189,8 +189,14 @@ def _resolve_source_dir(src, matched_desc=None):
         criteria_hit = matches > 0 if has_criteria else False
         modality_hits = st["ct_modality"] if target == "ct" else st["pt_modality"]
         named_dir_hit = st["ct_named_dir"] if target == "ct" else st["pt_named_dir"]
+        # When SeriesDescription is specified, a directory that matches it must
+        # rank above any directory that does not, regardless of modality count or
+        # directory name. Use sd_match as the second-highest sort key so it
+        # overrides modality/named-dir heuristics.
+        sd_hit = 1 if (expected_sd and st["sd_match"] > 0) else 0
         return (
             1 if criteria_hit else 0,
+            sd_hit,
             matches,
             modality_hits,
             1 if named_dir_hit else 0,
@@ -211,6 +217,30 @@ def _resolve_source_dir(src, matched_desc=None):
             or (expected_pn and best_stat["pn_match"] == 0)
             or (expected_it and best_stat["it_match"] == 0)
         ):
+            # DEBUG: uncomment the block below to diagnose AND-gate failures
+            # it_str = ", ".join(expected_it) if isinstance(expected_it, (list, tuple)) else _norm_text(expected_it)
+            # print(
+            #     f"[DEBUG] _resolve_source_dir: AND-gate failed for {target.upper()}."
+            #     f" Criteria: SD={expected_sd or '<none>'},"
+            #     f" PN={expected_pn or '<none>'},"
+            #     f" IT={it_str or '<none>'}"
+            # )
+            # print(f"[DEBUG] Best candidate dir: {best_dir}")
+            # print(
+            #     f"[DEBUG] Best dir stats: sd_match={best_stat['sd_match']},"
+            #     f" pn_match={best_stat['pn_match']},"
+            #     f" it_match={best_stat['it_match']},"
+            #     f" pt_modality={best_stat['pt_modality']},"
+            #     f" ct_modality={best_stat['ct_modality']},"
+            #     f" dicom_count={best_stat['dicom_count']}"
+            # )
+            # print("[DEBUG] All directory stats:")
+            # for dpath, dstat in sorted(dir_stats.items()):
+            #     print(
+            #         f"[DEBUG]   {dpath}: sd={dstat['sd_match']} pn={dstat['pn_match']}"
+            #         f" it={dstat['it_match']} pt={dstat['pt_modality']} ct={dstat['ct_modality']}"
+            #         f" dicoms={dstat['dicom_count']}"
+            #     )
             return None
 
     print(f"Resolved {target.upper()} source folder: {best_dir}")

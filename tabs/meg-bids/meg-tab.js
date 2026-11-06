@@ -75,7 +75,6 @@
       bidsDir: 'megCfgBidsDir',
       conversionFile: 'megCfgConversionFile',
       configFile: 'megCfgConfigFile',
-      overwrite: 'megCfgOverwrite',
       tablePath: 'megTablePath',
       tasksList: 'megTasksList',
       searchInput: 'megSearchInput',
@@ -182,8 +181,7 @@
       bids_dir: MEG_CONSTANTS.defaults.bids_dir,
       tasks: [],
       conversion_file: MEG_CONSTANTS.defaults.conversion_file,
-      config_file: MEG_CONSTANTS.defaults.config_file,
-      overwrite: false
+      config_file: MEG_CONSTANTS.defaults.config_file
     },
 
     // Table state
@@ -348,6 +346,8 @@
       document.querySelectorAll('.meg-step').forEach(el => {
         el.classList.toggle('active', el.id === MEG_CONSTANTS.stepPrefix + step);
       });
+
+      if (step === 3) this.Editor.renderStageConvertStep();
     },
 
     // Load config from localStorage
@@ -407,8 +407,15 @@
         bids_dir: this.toProjectRelativePath(serverConfig.BIDS, MEG_CONSTANTS.defaults.bids_dir),
         tasks: serverConfig.Tasks || [],
         conversion_file: this.toProjectRelativePath(serverConfig.Conversion_file, MEG_CONSTANTS.defaults.conversion_file),
-        config_file: this.toProjectRelativePath(serverConfig.config_file, MEG_CONSTANTS.defaults.config_file),
-        overwrite: serverConfig.overwrite || false
+        // The "currently loaded file" must always be the real path this file was
+        // just loaded from (data.path, falling back to the requested configPath),
+        // never a name baked into the file's own JSON content. A config file can be
+        // freely copied/renamed on disk, at which point any self-referential name
+        // stored inside it goes stale; worse, load_minimal_config() doesn't even
+        // pass such a field through, so relying on it silently resets tracking to
+        // the hard-coded default filename regardless of what was actually opened,
+        // which risks Save silently overwriting the wrong file.
+        config_file: this.toProjectRelativePath(data.path || configPath, MEG_CONSTANTS.defaults.config_file)
       };
 
       const rawEl = this.getEl('rawDir');
@@ -419,8 +426,6 @@
       if (convEl) convEl.value = this.config.conversion_file;
       const cfgEl = this.getEl('configFile');
       if (cfgEl) cfgEl.value = this.config.config_file;
-      const overwriteEl = this.getEl('overwrite');
-      if (overwriteEl) overwriteEl.checked = this.config.overwrite;
 
       this.renderTasks();
       this.updateJsonDisplay();
@@ -462,9 +467,6 @@
       setVal(MEG_CONSTANTS.ids.configFile, this.config.config_file);
       setVal(MEG_CONSTANTS.ids.tablePath, this.config.conversion_file);
       this.renderTasks();
-
-      const overwriteEl = this.getEl('overwrite');
-      if (overwriteEl) overwriteEl.checked = this.config.overwrite || false;
     },
 
     // Set status message
@@ -487,7 +489,6 @@
       this.config.bids_dir = this.toProjectRelativePath(this.getEl('bidsDir')?.value, MEG_CONSTANTS.defaults.bids_dir);
       this.config.conversion_file = this.toProjectRelativePath(this.getEl('conversionFile')?.value, MEG_CONSTANTS.defaults.conversion_file);
       this.config.config_file = this.toProjectRelativePath(this.getEl('configFile')?.value, MEG_CONSTANTS.defaults.config_file);
-      this.config.overwrite = this.getEl('overwrite')?.checked || false;
       this.config.tasks = this.config.tasks || [];
 
       const rawDirEl = this.getEl('rawDir');
@@ -529,8 +530,6 @@
         if (convEl) convEl.value = this.config.conversion_file || '';
         const cfgEl = this.getEl('configFile');
         if (cfgEl) cfgEl.value = this.config.config_file || MEG_CONSTANTS.defaults.config_file;
-        const overwriteEl = this.getEl('overwrite');
-        if (overwriteEl) overwriteEl.checked = parsed.overwrite || false;
         const tablePath = this.getEl('tablePath');
         if (tablePath) tablePath.value = this.config.conversion_file || '';
         this.renderTasks();
@@ -546,7 +545,12 @@
 
     // Update JSON display
     updateJsonDisplay: function() {
-      const jsonText = JSON.stringify(this.config, null, 2);
+      // Show exactly what saveConfigToFile() actually writes to disk.
+      // this.config also carries config_file, but that's internal UI/save-target
+      // state (which file to load/write) - not part of the file's own content -
+      // so it must not appear in this "Configuration JSON" preview either.
+      const { config_file, ...fileContents } = this.config;
+      const jsonText = JSON.stringify(fileContents, null, 2);
       const viewEl = document.getElementById('megJsonView');
       const editEl = document.getElementById('megJsonEdit');
       if (viewEl) viewEl.textContent = jsonText;
@@ -704,8 +708,7 @@
         bids_dir: MEG_CONSTANTS.defaults.bids_dir,
         tasks: [],
         conversion_file: MEG_CONSTANTS.defaults.conversion_file,
-        config_file: MEG_CONSTANTS.defaults.config_file,
-        overwrite: false
+        config_file: MEG_CONSTANTS.defaults.config_file
       };
 
       const rawEl = this.getEl('rawDir');
@@ -716,8 +719,6 @@
       if (convEl) convEl.value = MEG_CONSTANTS.defaults.conversion_file;
       const cfgEl = this.getEl('configFile');
       if (cfgEl) cfgEl.value = MEG_CONSTANTS.defaults.config_file;
-      const overwriteEl = this.getEl('overwrite');
-      if (overwriteEl) overwriteEl.checked = false;
 
       this.renderTasks();
       this.updateJsonDisplay();
@@ -738,15 +739,21 @@
     },
 
     saveConfigToFile: async function() {
-      // Convert to server format
+      // Convert to server format. Deliberately does NOT include config_file:
+      // baking the file's own name into its own content is meaningless (nothing
+      // ever reads it back - see load_minimal_config's documented schema) and
+      // actively harmful, since the name goes stale the moment the file is
+      // copied/renamed on disk, which previously caused the UI's "currently
+      // loaded file" tracking to reset to the default filename on every load.
+      // The target filename is only ever passed as the separate top-level
+      // config_file field below, telling the backend where to write - it is
+      // never persisted inside the file itself.
       const serverConfig = {
         project_name: this.config.project_name,
         raw_dir: this.config.raw_dir,
         bids_dir: this.config.bids_dir,
         tasks: this.config.tasks,
-        conversion_file: this.config.conversion_file,
-        config_file: this.config.config_file,
-        overwrite: this.config.overwrite
+        conversion_file: this.config.conversion_file
       };
 
       const configFileName = this.config.config_file || MEG_CONSTANTS.defaults.config_file;
@@ -832,6 +839,8 @@
         if (saveBtn) {
           saveBtn.addEventListener('click', () => this.saveTable());
         }
+
+        this.setupStagingEventListeners();
 
         // Sync editor table path back to config/json.
         const tablePathInput = megBids.getEl('tablePath');
@@ -1088,7 +1097,6 @@
             tasks: megBids.config.tasks,
             conversion_file: megBids.config.conversion_file,
             config_file: megBids.config.config_file,
-            overwrite: megBids.config.overwrite,
             overwrite_conversion: overwriteAnalysis
           };
 
@@ -1164,8 +1172,7 @@
             bids_dir: megBids.config.bids_dir,
             tasks: megBids.config.tasks,
             conversion_file: conversionPath,
-            config_file: megBids.config.config_file,
-            overwrite: megBids.config.overwrite
+            config_file: megBids.config.config_file
           };
 
           const tableRes = await fetch(Utils.apiPath(MEG_CONSTANTS.api.loadConversionTable), {
@@ -1174,7 +1181,11 @@
             body: JSON.stringify({ config: serverConfig })
           });
           const tableData = await tableRes.json();
-          if (tableData.error) return;
+          if (tableData.error) {
+            console.error('Autoload of conversion table failed:', tableData.error);
+            megBids.setStatus('megTableStatus', `Failed to load conversion table: ${tableData.error}`, 'warn');
+            return;
+          }
 
           megBids.tableData = tableData.table || [];
           megBids.originalData = JSON.parse(JSON.stringify(tableData.table || []));
@@ -1198,8 +1209,12 @@
           megBids.updateJsonDisplay();
           megBids.setStatus('megTableStatus', `Loaded existing conversion table (${megBids.tableData.length} rows).`);
           this.renderStatusLegend();
-        } catch (_) {
-          // Silent by design: startup should not fail if table autoload fails.
+        } catch (e) {
+          // Startup should not throw if table autoload fails, but the failure
+          // must still be visible - previously this was swallowed entirely,
+          // leaving every table view silently empty with no way to diagnose why.
+          console.error('Autoload of conversion table failed:', e);
+          megBids.setStatus('megTableStatus', `Failed to load conversion table: ${e.message || e}`, 'warn');
         }
       },
 
@@ -1786,6 +1801,33 @@
         row.metadata = JSON.stringify(metadata);
       },
 
+      // Staging: whether a row is queued for the next BIDS conversion run.
+      getRowStaged: function(row) {
+        const metadata = this.parseRowMetadata(row);
+        const tracking = metadata && metadata.tracking && typeof metadata.tracking === 'object' ? metadata.tracking : {};
+        return !!tracking.staged;
+      },
+
+      setRowStagedInMetadata: function(row, staged) {
+        const metadata = this.parseRowMetadata(row);
+        const tracking = metadata.tracking && typeof metadata.tracking === 'object' ? metadata.tracking : {};
+        tracking.staged = !!staged;
+        metadata.tracking = tracking;
+        row.metadata = JSON.stringify(metadata);
+      },
+
+      // An actual transition away from 'run' (e.g. a manual status edit) auto-unstages
+      // a row. A no-op re-confirmation of the same status never clears staging, since
+      // staging an already-'processed' row on purpose is how a user requests it be
+      // reprocessed/overwritten.
+      setRowStatus: function(row, newStatus) {
+        const oldStatus = row.status;
+        row.status = newStatus;
+        if (oldStatus !== newStatus && newStatus !== 'run' && this.getRowStaged(row)) {
+          this.setRowStagedInMetadata(row, false);
+        }
+      },
+
       getModalFilename: function() {
         const parts = [];
 
@@ -1894,7 +1936,7 @@
         row.suffix = megBids.getModalValue('suffix');
         row.extension = megBids.getModalValue('extension');
         row.datatype = megBids.getModalValue('datatype');
-        row.status = megBids.getModalValue('status');
+        this.setRowStatus(row, megBids.getModalValue('status'));
 
         const rebuiltName = this.getModalFilename();
         if (rebuiltName) row.bids_name = rebuiltName;
@@ -1951,6 +1993,209 @@
         selectAll.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visible.length;
       },
 
+      // ── Step 3: Stage & Convert ──────────────────────────────────────────
+
+      stageSelected: new Set(),
+      stageView: 'unstaged',
+
+      // Rows eligible to be staged: not already staged, and in a status where
+      // (re)conversion makes sense. Staging a 'processed' row queues it to be
+      // reconverted/overwritten; 'check' and 'skip'/'missing' rows are excluded
+      // since they need attention or are intentionally not being converted.
+      isStageEligible: function(row) {
+        return !this.getRowStaged(row) && ['run', 'processed', 'error'].includes(row.status);
+      },
+
+      // Which View bucket a row currently belongs to. 'staged' takes priority
+      // (a staged+processed row is about to be overwritten, so it belongs with
+      // the other staged jobs, not with the read-only 'finished' list).
+      stageBucketFor: function(row) {
+        if (this.getRowStaged(row)) return 'staged';
+        if (row.status === 'processed') return 'finished';
+        return 'unstaged';
+      },
+
+      setupStagingEventListeners: function() {
+        const selectAll = document.getElementById('megStageSelectAll');
+        if (selectAll) {
+          selectAll.addEventListener('change', () => {
+            const selectableIdx = megBids.tableData
+              .map((row, idx) => idx)
+              .filter(idx => {
+                const row = megBids.tableData[idx];
+                // A row must belong to the currently displayed view bucket AND be
+                // individually selectable there. `isStageEligible` alone is not
+                // enough: it also matches not-yet-staged 'processed' rows, which
+                // `stageBucketFor` places in the read-only 'finished' bucket, not
+                // 'unstaged'. Without the bucket check, "select all" on the
+                // Unstaged view would silently pull in invisible Finished rows.
+                if (this.stageBucketFor(row) !== this.stageView) return false;
+                if (this.stageView === 'unstaged') return this.isStageEligible(row);
+                if (this.stageView === 'staged') return this.getRowStaged(row);
+                return false;
+              });
+            if (selectAll.checked) selectableIdx.forEach(idx => this.stageSelected.add(idx));
+            else this.stageSelected.clear();
+            this.renderStageConvertStep();
+          });
+        }
+
+        const stageSelectedBtn = document.getElementById('megStageSelectedBtn');
+        if (stageSelectedBtn) {
+          stageSelectedBtn.addEventListener('click', () => this.stageSelectedRows());
+        }
+
+        const unstageSelectedBtn = document.getElementById('megUnstageSelectedBtn');
+        if (unstageSelectedBtn) {
+          unstageSelectedBtn.addEventListener('click', () => this.unstageSelectedRows());
+        }
+      },
+
+      // Output filename/path inferred from the row's BIDS path fields (same
+      // convention used by the editor modal's "Converted" preview).
+      getRowOutputFile: function(row) {
+        const bidsPath = row.bids_path || '';
+        const bidsName = row.bids_name || '';
+        if (!bidsName) return { name: '', path: '' };
+        return { name: bidsName, path: bidsPath ? `${bidsPath}/${bidsName}` : bidsName };
+      },
+
+      stagingRowCells: function(row) {
+        const output = this.getRowOutputFile(row);
+        return `
+          <td>${Utils.escapeHtml(row.status || '')}</td>
+          <td title="${Utils.escapeHtml(row.raw_path || '')}/${Utils.escapeHtml(row.raw_name || '')}">${Utils.escapeHtml(row.raw_name || '')}</td>
+          <td title="${Utils.escapeHtml(output.path)}">${Utils.escapeHtml(output.name || '—')}</td>
+        `;
+      },
+
+      setStageView: function(view) {
+        this.stageView = view;
+        this.stageSelected.clear();
+        document.querySelectorAll('.meg-make-bids-filter').forEach(btn => {
+          btn.classList.toggle('active', btn.id === `megStageView${view.charAt(0).toUpperCase()}${view.slice(1)}`);
+        });
+        this.renderStageConvertStep();
+      },
+
+      renderStageConvertStep: function() {
+        // Drop stale selections (rows that moved buckets since last render).
+        this.stageSelected.forEach(idx => {
+          const row = megBids.tableData[idx];
+          if (!row) { this.stageSelected.delete(idx); return; }
+          if (this.stageView === 'unstaged' && !this.isStageEligible(row)) this.stageSelected.delete(idx);
+          if (this.stageView === 'staged' && !this.getRowStaged(row)) this.stageSelected.delete(idx);
+        });
+
+        const body = document.getElementById('megStageBody');
+        const empty = document.getElementById('megStageEmpty');
+        const countEl = document.getElementById('megStageViewCount');
+        const selectAllCb = document.getElementById('megStageSelectAll');
+        if (!body) return;
+
+        // 'all' and 'finished' are read-only reference views: no checkboxes,
+        // no per-row unstage action, no bulk stage/unstage actions.
+        const showCheckboxes = this.stageView === 'unstaged' || this.stageView === 'staged';
+
+        const rows = megBids.tableData
+          .map((row, idx) => ({ row, idx }))
+          .filter(({ row }) => this.stageView === 'all' || this.stageBucketFor(row) === this.stageView);
+
+        body.innerHTML = rows.map(({ row, idx }) => {
+          const staged = this.getRowStaged(row);
+          const willOverwrite = staged && row.status === 'processed';
+          const selectable = showCheckboxes && (this.stageView === 'staged' ? staged : this.isStageEligible(row));
+          const checked = this.stageSelected.has(idx) ? 'checked' : '';
+          const checkboxCell = selectable
+            ? `<td class="checkbox-cell"><input type="checkbox" data-stage-row="${idx}" ${checked}></td>`
+            : `<td class="checkbox-cell"></td>`;
+          const actionCell = (this.stageView === 'staged' && staged)
+            ? `<td><button type="button" class="btn-small" data-unstage-row="${idx}">Unstage</button></td>`
+            : '<td></td>';
+          return `
+            <tr class="${willOverwrite ? 'meg-will-overwrite' : ''}">
+              ${checkboxCell}
+              ${this.stagingRowCells(row)}
+              ${actionCell}
+            </tr>
+          `;
+        }).join('');
+
+        body.querySelectorAll('[data-stage-row]').forEach(el => {
+          el.addEventListener('change', () => {
+            const idx = parseInt(el.dataset.stageRow, 10);
+            if (el.checked) this.stageSelected.add(idx);
+            else this.stageSelected.delete(idx);
+            this.updateStagingActionState();
+          });
+        });
+        body.querySelectorAll('[data-unstage-row]').forEach(el => {
+          el.addEventListener('click', () => {
+            const idx = parseInt(el.dataset.unstageRow, 10);
+            this.unstageRows([idx]);
+          });
+        });
+
+        if (empty) empty.style.display = rows.length ? 'none' : 'block';
+        if (countEl) countEl.textContent = `${rows.length} row${rows.length === 1 ? '' : 's'}`;
+        if (selectAllCb) {
+          selectAllCb.style.visibility = showCheckboxes ? 'visible' : 'hidden';
+          selectAllCb.checked = false;
+          selectAllCb.disabled = !showCheckboxes;
+        }
+
+        this.updateStagingActionState();
+      },
+
+      updateStagingActionState: function() {
+        const stageBtn = document.getElementById('megStageSelectedBtn');
+        const unstageBtn = document.getElementById('megUnstageSelectedBtn');
+        const countEl = document.getElementById('megStageSelectedCount');
+
+        const showStage = this.stageView === 'unstaged';
+        const showUnstage = this.stageView === 'staged';
+
+        if (stageBtn) {
+          stageBtn.style.display = showStage ? '' : 'none';
+          stageBtn.disabled = this.stageSelected.size === 0;
+        }
+        if (unstageBtn) {
+          unstageBtn.style.display = showUnstage ? '' : 'none';
+          unstageBtn.disabled = this.stageSelected.size === 0;
+        }
+        if (countEl) countEl.textContent = (showStage || showUnstage) ? `${this.stageSelected.size} selected` : '';
+      },
+
+      stageSelectedRows: async function() {
+        if (!this.stageSelected.size) return;
+        this.stageSelected.forEach(idx => {
+          const row = megBids.tableData[idx];
+          if (!row) return;
+          this.setRowStagedInMetadata(row, true);
+          megBids.modifiedRows.add(idx);
+        });
+        this.stageSelected.clear();
+        await this.saveTable();
+        this.renderStageConvertStep();
+      },
+
+      unstageSelectedRows: async function() {
+        if (!this.stageSelected.size) return;
+        await this.unstageRows([...this.stageSelected]);
+      },
+
+      unstageRows: async function(indices) {
+        indices.forEach(idx => {
+          const row = megBids.tableData[idx];
+          if (!row) return;
+          this.setRowStagedInMetadata(row, false);
+          megBids.modifiedRows.add(idx);
+          this.stageSelected.delete(idx);
+        });
+        await this.saveTable();
+        this.renderStageConvertStep();
+      },
+
       // Batch update status for selected rows
       batchUpdateStatus: function() {
         const statusEl = megBids.getEl('batchStatus');
@@ -1960,7 +2205,7 @@
         if (!newStatus) return;
 
         megBids.selectedRows.forEach(dataIdx => {
-          megBids.tableData[dataIdx].status = newStatus;
+          this.setRowStatus(megBids.tableData[dataIdx], newStatus);
           megBids.tableSearchIndex[dataIdx] = this.buildRowSearchText(megBids.tableData[dataIdx]);
           megBids.modifiedRows.add(dataIdx);
         });
@@ -2067,6 +2312,7 @@
         let progressTimer = null;
         let progressValue = 0;
         let displayedVerboseErrors = 0;
+        let displayedStaleRemovals = 0;
 
         const setProgress = (value, text) => {
           const clamped = Math.max(0, Math.min(100, value));
@@ -2119,6 +2365,27 @@
           displayedVerboseErrors = totalErrorItems;
         };
 
+        // Always shown (not gated behind verbose): a row's previous output
+        // being deleted and replaced is a destructive side effect the user
+        // should see regardless of the verbose-logging setting.
+        const appendStaleRemovals = (job) => {
+          if (!output || !job || !Array.isArray(job.recent_stale_removals)) return;
+          const total = job.recent_stale_removals.length;
+          if (total <= displayedStaleRemovals) return;
+
+          const newItems = job.recent_stale_removals.slice(displayedStaleRemovals);
+          newItems.forEach((item) => {
+            const rawName = item?.raw_name || 'unknown file';
+            const oldName = item?.old_name || '(previous output)';
+            const newName = item?.new_name || '(new output)';
+            const count = Array.isArray(item?.removed) ? item.removed.length : 0;
+            output.textContent += `\nReplacing previous output for ${rawName}: "${oldName}" -> "${newName}" ` +
+              `(removed ${count} old file${count === 1 ? '' : 's'})`;
+          });
+
+          displayedStaleRemovals = total;
+        };
+
         const refreshConversionTable = async () => {
           try {
             const serverConfig = {
@@ -2127,8 +2394,7 @@
               bids_dir: megBids.config.bids_dir,
               tasks: megBids.config.tasks,
               conversion_file: megBids.config.conversion_file,
-              config_file: megBids.config.config_file,
-              overwrite: megBids.config.overwrite
+              config_file: megBids.config.config_file
             };
             const tableRes = await fetch(Utils.apiPath(MEG_CONSTANTS.api.loadConversionTable), {
               method: 'POST',
@@ -2136,7 +2402,12 @@
               body: JSON.stringify({ config: serverConfig })
             });
             const tableData = await tableRes.json();
-            if (tableData.error) return;
+            if (tableData.error) {
+              console.error('Post-conversion table refresh failed:', tableData.error);
+              if (output) output.textContent += `\nWarning: could not refresh the table view: ${tableData.error}`;
+              megBids.setStatus('megConversionStatus', 'Conversion completed, but refreshing the table view failed (see output above).', 'warn');
+              return;
+            }
 
             megBids.tableData = tableData.table || [];
             megBids.originalData = JSON.parse(JSON.stringify(tableData.table || []));
@@ -2152,8 +2423,13 @@
             }
             this.populateFilters();
             this.applyFilters();
-          } catch (_) {
-            // Keep UI responsive even if refresh fails.
+            this.renderStageConvertStep();
+          } catch (e) {
+            // Keep UI responsive even if refresh fails, but don't hide it -
+            // previously this was a silent catch-all with no visible trace.
+            console.error('Post-conversion table refresh failed:', e);
+            if (output) output.textContent += `\nWarning: could not refresh the table view: ${e.message || e}`;
+            megBids.setStatus('megConversionStatus', 'Conversion completed, but refreshing the table view failed (see output above).', 'warn');
           }
         };
 
@@ -2170,8 +2446,7 @@
             bids_dir: megBids.config.bids_dir,
             tasks: megBids.config.tasks,
             conversion_file: megBids.config.conversion_file,
-            config_file: megBids.config.config_file,
-            overwrite: megBids.config.overwrite
+            config_file: megBids.config.config_file
           };
 
           const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.runBidsify), {
@@ -2197,8 +2472,44 @@
           const setupWeight = 8;
           const writeWeight = 88;
 
+          let consecutivePollFailures = 0;
+          const maxConsecutivePollFailures = 10;
+
           while (true) {
-            const progressRes = await fetch(Utils.apiPath(`${MEG_CONSTANTS.api.bidsifyProgress}?job_id=${encodeURIComponent(jobId)}`));
+            let progressRes;
+            try {
+              progressRes = await fetch(Utils.apiPath(`${MEG_CONSTANTS.api.bidsifyProgress}?job_id=${encodeURIComponent(jobId)}`));
+            } catch (networkErr) {
+              progressRes = null;
+            }
+
+            // A non-2xx response (rate limited, transient 5xx, brief server
+            // restart, etc.) does not mean the conversion itself failed - the
+            // job keeps running server-side independently of this poller.
+            // Calling .json() on such a response is also what previously
+            // produced a confusing "JSON.parse: unexpected character..."
+            // error instead of a clear message, since error pages aren't JSON.
+            // Back off and retry a bounded number of times instead of
+            // immediately declaring the whole conversion failed.
+            if (!progressRes || !progressRes.ok) {
+              consecutivePollFailures += 1;
+              if (consecutivePollFailures > maxConsecutivePollFailures) {
+                setProgress(Math.max(progressValue, 95), 'Conversion status unknown');
+                if (output) {
+                  output.textContent += '\nLost contact with the server while checking conversion progress ' +
+                    '(repeated non-JSON/error responses). The conversion may still be running on the server; ' +
+                    'reload the page to check its status.';
+                }
+                megBids.setStatus('megConversionStatus', 'Progress check failed - conversion may still be running', 'warn');
+                break;
+              }
+              const statusNote = progressRes ? `HTTP ${progressRes.status}` : 'network error';
+              if (output) output.textContent += `\n(progress check got ${statusNote}, retrying...)`;
+              await new Promise((resolve) => window.setTimeout(resolve, 1500));
+              continue;
+            }
+            consecutivePollFailures = 0;
+
             const progressData = await progressRes.json();
 
             if (progressData.error || !progressData.job) {
@@ -2211,6 +2522,7 @@
             stopProgressAnimation();
             const job = progressData.job;
             appendVerboseErrors(job);
+            appendStaleRemovals(job);
             const total = Math.max(0, Number(job.total || 0));
             const processed = Math.max(0, Number(job.processed || 0));
             const errors = Math.max(0, Number(job.errors || 0));
@@ -2258,7 +2570,7 @@
               break;
             }
 
-            await new Promise((resolve) => window.setTimeout(resolve, 700));
+            await new Promise((resolve) => window.setTimeout(resolve, 1000));
           }
         } catch (e) {
           stopProgressAnimation();
@@ -2289,8 +2601,7 @@
             bids_dir: megBids.config.bids_dir,
             tasks: megBids.config.tasks,
             conversion_file: megBids.config.conversion_file,
-            config_file: megBids.config.config_file,
-            overwrite: megBids.config.overwrite
+            config_file: megBids.config.config_file
           };
 
           const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.runReport), {
@@ -2331,8 +2642,7 @@
             bids_dir: megBids.config.bids_dir,
             tasks: megBids.config.tasks,
             conversion_file: megBids.config.conversion_file,
-            config_file: megBids.config.config_file,
-            overwrite: megBids.config.overwrite
+            config_file: megBids.config.config_file
           };
 
           const res = await fetch(Utils.apiPath(MEG_CONSTANTS.api.getReport), {

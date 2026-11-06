@@ -42,7 +42,19 @@ TAB_METADATA = {
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 def _detect_project_root(script_dir):
-    """Return /data/projects/<project> for nested repo locations."""
+    """Resolve the active project root directory.
+
+    Resolution order:
+      1. PROJECTS_ROOT + PROJECT_NAME (env vars, e.g. from .env or --project)
+         — explicit override, primarily for local/dev testing off SPICE.
+      2. Auto-detected /data/projects/<project> for nested repo locations.
+      3. Fallback: assumes <project>/cir-utils/tabs/<tab> layout.
+    """
+    projects_root = os.environ.get("PROJECTS_ROOT")
+    project_name = os.environ.get("PROJECT_NAME")
+    if projects_root and project_name:
+        return os.path.realpath(os.path.join(projects_root, project_name))
+
     resolved = os.path.realpath(script_dir)
     match = re.match(r"^(/data/projects/[^/]+)(?:/|$)", resolved)
     if match:
@@ -84,7 +96,8 @@ def _run_bidsify_job(job_id, config, verbose):
                 errors=int(payload.get('errors', 0) or 0),
                 current_file=payload.get('current_file'),
                 last_error=payload.get('last_error'),
-                recent_errors=payload.get('recent_errors', [])
+                recent_errors=payload.get('recent_errors', []),
+                recent_stale_removals=payload.get('recent_stale_removals', [])
             )
 
         summary = bidsify(
@@ -170,7 +183,6 @@ def _build_runtime_config(client_config=None):
             'Tasks': [],
             'Conversion_file': _resolve_project_path(CONSTS.MEG_DEFAULT_CONVERSION_FILE),
             'config_file': _DEFAULT_CONFIG_FILE,
-            'overwrite': False,
         })
         return config, None
 
@@ -202,7 +214,6 @@ def _build_runtime_config(client_config=None):
         'Tasks': client_config.get('tasks', []),
         'Conversion_file': conversion_path,
         'config_file': config_file,
-        'overwrite': client_config.get('overwrite', False),
         'Overwrite_conversion': client_config.get('overwrite_conversion', False),
     })
     return config, None
@@ -382,10 +393,19 @@ def _handle_load_conversion_table(h, body):
         h._send_json({"error": config_error})
         return
 
+    t_start = time.perf_counter()
     try:
         conversion_table, conversion_file = load_conversion_table(config, refresh_status=True)
+        t_loaded = time.perf_counter()
 
         table_data = conversion_table.fillna('').to_dict('records') if not conversion_table.empty else []
+        t_serialized = time.perf_counter()
+
+        print(
+            f"[routes] load-conversion-table: {len(table_data)} rows, "
+            f"load={t_loaded - t_start:.3f}s, serialize={t_serialized - t_loaded:.3f}s, "
+            f"total={t_serialized - t_start:.3f}s"
+        )
 
         h._send_json({
             "ok": True,
@@ -394,6 +414,14 @@ def _handle_load_conversion_table(h, body):
             "row_count": len(table_data)
         })
     except Exception as e:
+        # Previously this exception was only ever reported to the client as a
+        # JSON {"error": ...} body, which every client call site silently
+        # swallowed (see meg-tab.js). Log it here too so a failed load is at
+        # least visible in the server console.
+        import traceback
+        elapsed = time.perf_counter() - t_start
+        print(f"[routes] load-conversion-table FAILED after {elapsed:.3f}s: {e}")
+        traceback.print_exc()
         h._send_json({"error": str(e)})
 
 
@@ -423,6 +451,7 @@ def _handle_run_bidsify(h, body):
             'error': None,
             'last_error': None,
             'recent_errors': [],
+            'recent_stale_removals': [],
             'updated_at': time.time(),
         }
 

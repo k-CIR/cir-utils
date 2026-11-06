@@ -1,15 +1,18 @@
+# System junc
 __pycache__
+.DS_Store
+
+# Environments
+.venv
+
+# Other files and directories
+tests
+*dev.txt
+.pytest_cache/
+tabs/meg-bids/web
+.docs
 tabs/*/dcm2bids_helper/
 tabs/*/*.csv
 dcm2bids_config_mr.json
 dcm2bids_config_pet.json
 .pet2bids-container-home/
-
-.venv
-.DS_Store
-
-# Ignore test files and directories
-tests
-*dev.txt
-.pytest_cache/
-tabs/meg-bids/web
