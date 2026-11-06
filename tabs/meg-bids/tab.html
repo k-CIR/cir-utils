@@ -382,6 +382,26 @@
       </div>
    </div>
 
+   <!-- Overwrite Warning Modal -->
+   <div id="megOverwriteWarnModal" class="meg-edit-modal" style="display:none;">
+     <div class="meg-edit-modal-panel meg-overwrite-warn-panel">
+       <div class="meg-edit-modal-header">
+         <h3 class="meg-edit-modal-title">&#9888; Potential Data Overwrite</h3>
+       </div>
+       <div class="meg-edit-modal-body meg-overwrite-warn-body">
+         <p id="megOverwriteWarnText"></p>
+         <label class="meg-overwrite-warn-check-label">
+           <input type="checkbox" id="megOverwriteWarnCheck">
+           I have checked that proceeding will not result in loss of data.
+         </label>
+       </div>
+       <div class="meg-edit-modal-footer meg-overwrite-warn-footer">
+         <button id="megOverwriteWarnBack" class="btn">Go Back</button>
+         <button id="megOverwriteWarnProceed" class="btn primary" disabled>Proceed</button>
+       </div>
+     </div>
+   </div>
+
    <!-- Advanced Edit Modal -->
    <div id="megEditModal" class="meg-edit-modal">
      <div class="meg-edit-modal-panel">
