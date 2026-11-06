@@ -2293,8 +2293,81 @@
         }
       },
 
+      // Check whether any staged row's BIDS output collides with a skip row.
+      // Returns a Promise<boolean>: true = user confirmed / no collision, false = user cancelled.
+      _checkSkipCollisionsBeforeRun: function() {
+        const tableData = megBids.tableData || [];
+        const tsvName = (megBids.tableFile || 'conversion table').split('/').pop();
+
+        // Build a map: normalised BIDS output path → array of row statuses
+        const outputMap = {};
+        tableData.forEach(row => {
+          const p = row.bids_path, n = row.bids_name;
+          if (!p || !n) return;
+          const key = p.replace(/\/+$/, '') + '/' + n;
+          if (!outputMap[key]) outputMap[key] = [];
+          outputMap[key].push(row.status);
+        });
+
+        // A collision exists when a staged row shares an output path with a skip row.
+        const stagedRows = tableData.filter(row => this.getRowStaged(row));
+        let hasCollision = false;
+        stagedRows.forEach(row => {
+          const p = row.bids_path, n = row.bids_name;
+          if (!p || !n) return;
+          const key = p.replace(/\/+$/, '') + '/' + n;
+          const statuses = outputMap[key] || [];
+          if (statuses.includes('skip')) hasCollision = true;
+        });
+
+        if (!hasCollision) return Promise.resolve(true);
+
+        // Show the warning modal and wait for user decision.
+        return new Promise(resolve => {
+          const modal = document.getElementById('megOverwriteWarnModal');
+          const textEl = document.getElementById('megOverwriteWarnText');
+          const checkbox = document.getElementById('megOverwriteWarnCheck');
+          const proceedBtn = document.getElementById('megOverwriteWarnProceed');
+          const backBtn = document.getElementById('megOverwriteWarnBack');
+
+          if (!modal) { resolve(true); return; }
+
+          if (textEl) {
+            textEl.textContent =
+              `You are trying to BIDSify data with output paths that match other rows in` +
+              ` "${tsvName}" that are marked as "skip". Proceeding with BIDSification may` +
+              ` result in data being overwritten. Only press "Proceed" if you have checked` +
+              ` that this will not result in loss of data.`;
+          }
+          if (checkbox) checkbox.checked = false;
+          if (proceedBtn) proceedBtn.disabled = true;
+
+          const onCheckChange = () => {
+            if (proceedBtn) proceedBtn.disabled = !checkbox.checked;
+          };
+          const onProceed = () => { cleanup(); resolve(true); };
+          const onBack = () => { cleanup(); resolve(false); };
+
+          const cleanup = () => {
+            modal.style.display = 'none';
+            if (checkbox) checkbox.removeEventListener('change', onCheckChange);
+            if (proceedBtn) proceedBtn.removeEventListener('click', onProceed);
+            if (backBtn) backBtn.removeEventListener('click', onBack);
+          };
+
+          if (checkbox) checkbox.addEventListener('change', onCheckChange);
+          if (proceedBtn) proceedBtn.addEventListener('click', onProceed);
+          if (backBtn) backBtn.addEventListener('click', onBack);
+
+          modal.style.display = 'block';
+        });
+      },
+
       // Step 3: Run BIDS conversion
       runBidsify: async function() {
+        const confirmed = await this._checkSkipCollisionsBeforeRun();
+        if (!confirmed) return;
+
         const verbose = document.getElementById('megVerboseCheck')?.checked || false;
 
         const btn = document.getElementById('megRunBidsifyBtn');

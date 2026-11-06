@@ -478,11 +478,16 @@ def _flag_duplicate_outputs(table: pd.DataFrame) -> pd.DataFrame:
     so converting two colliding rows silently makes the second overwrite the
     first on disk - nothing else here would ever notice or warn.
 
-    Any non-'skip' row in a colliding group is set to 'check' (an existing
-    review status already excluded from client-side staging eligibility)
-    with an explanatory note, so the collision is visible and blocks
-    conversion *before* it happens. A row explicitly marked 'skip' is left
-    alone - that is an intentional user decision, not an oversight to flag.
+    If more than one non-'skip' row in a group maps to the same output, all
+    of those active rows are set to 'check' (excluded from client-side staging
+    eligibility) with an explanatory note, so the collision is visible and
+    blocks conversion before it happens.
+
+    A group where the user has already resolved the conflict by marking every
+    competing row 'skip' — leaving at most one active row — is left alone.
+    That lone survivor has any previously-generated duplicate note cleared so
+    it no longer appears confusing in the UI.
+
     Re-running this against an already-flagged table is idempotent: it only
     ever overwrites a note it previously generated itself (identified by
     `_DUPLICATE_OUTPUT_NOTE_PREFIX`), never a user-authored note.
@@ -502,10 +507,27 @@ def _flag_duplicate_outputs(table: pd.DataFrame) -> pd.DataFrame:
     for idxs in groups.values():
         if len(idxs) < 2:
             continue
-        for idx in idxs:
-            if table.at[idx, 'status'] == 'skip':
-                continue
 
+        # Rows that are not skipped are the "active" candidates for conversion.
+        active_idxs = [i for i in idxs if table.at[i, 'status'] != 'skip']
+
+        # If at most one active row remains, the user has already resolved the
+        # conflict by skipping every other candidate — no real collision exists.
+        # Also clear any stale duplicate-output note from that lone survivor so
+        # it doesn't appear confusing in the UI.
+        if len(active_idxs) <= 1:
+            if len(active_idxs) == 1:
+                sole_idx = active_idxs[0]
+                metadata = _parse_metadata_object(table.at[sole_idx, 'metadata'])
+                tracking = metadata.get('tracking', {}) if isinstance(metadata.get('tracking'), dict) else {}
+                existing_note = tracking.get('notes')
+                if not _is_missing_scalar(existing_note) and str(existing_note).startswith(_DUPLICATE_OUTPUT_NOTE_PREFIX):
+                    tracking['notes'] = None
+                    metadata['tracking'] = tracking
+                    table.at[sole_idx, 'metadata'] = json.dumps(metadata, default=str)
+            continue
+
+        for idx in active_idxs:
             other_names = ', '.join(
                 str(table.at[i, 'raw_name']) for i in idxs
                 if i != idx and not _is_missing_scalar(table.at[i, 'raw_name'])
